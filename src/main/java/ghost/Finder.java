@@ -74,7 +74,20 @@ public final class Finder {
 
         List<Hit> hits = new ArrayList<>();
         int total = inPlayer;
-        BlockPos origin = player != null ? player.blockPosition() : BlockPos.ZERO;
+        // Without a player there is no sensible place to count from. This used
+        // to quietly fall back to BlockPos.ZERO and search the world origin -
+        // thousands of blocks from anywhere anyone plays - then report "none
+        // within 16 blocks" with complete confidence. It cost an hour of
+        // doubting a working AE2 craft that had in fact done its job.
+        //
+        // A count from nowhere is not a count. Fail so the caller has to say
+        // where it means.
+        if (player == null) {
+            throw new IllegalArgumentException(
+                    "Finder.count needs a player to count from - use an explicit "
+                            + "origin (the bridge's \"have\" action) for a positional count");
+        }
+        BlockPos origin = player.blockPosition();
         for (BlockPos p : BlockPos.betweenClosed(origin.offset(-radius, -radius, -radius),
                                                  origin.offset(radius, radius, radius))) {
             if (!(level.getBlockEntity(p) instanceof Container c)) {

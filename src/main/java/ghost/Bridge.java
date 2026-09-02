@@ -426,6 +426,26 @@ public final class Bridge {
                                 a.has("type") ? a.get("type").getAsString() : null))));
                 res.addProperty("ok", true);
             }
+            case "have" -> {
+                // Counts from a POSITION, not from a player.
+                //
+                // The /ghost have command anchors on src.getPlayer(), which is
+                // null when the command is run through this bridge - so it
+                // reported "none within 16 blocks" for items that were plainly
+                // there, and did it confidently. A verification that quietly
+                // looks somewhere else is worse than none, because it gets
+                // believed.
+                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
+                int r = a.has("radius") ? a.get("radius").getAsInt() : 16;
+                Item want = BuiltInRegistries.ITEM.get(
+                        ResourceLocation.parse(a.get("item").getAsString()));
+                res.addProperty("ok", true);
+                res.addProperty("item", a.get("item").getAsString());
+                res.addProperty("inNetwork", Storage.inNetworks(level, at, r, want));
+                res.addProperty("networks", Storage.networkCount(level, at, r));
+                res.addProperty("at", at.getX() + " " + at.getY() + " " + at.getZ());
+                res.addProperty("radius", r);
+            }
             case "craft" -> {
                 // The one verb that spends something. Everything else this
                 // bridge does is either reversible or free; an autocrafting job

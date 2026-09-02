@@ -270,6 +270,15 @@ public final class GhostCommand {
             src.sendFailure(Component.literal("Shelby: no such item - " + id));
             return 0;
         }
+        if (src.getPlayer() == null) {
+            // Run from the console or through the bridge, there is nobody to
+            // count around. Say so instead of counting from the world origin
+            // and reporting a confident zero.
+            src.sendFailure(Component.literal(
+                    "Shelby: run that as a player, or use the bridge's \"have\" "
+                            + "action which takes a position"));
+            return 0;
+        }
         Finder.Found f = Finder.count(src.getLevel(), src.getPlayer(), item, radius);
         if (f.grandTotal() == 0) {
             src.sendSuccess(() -> Component.literal(
