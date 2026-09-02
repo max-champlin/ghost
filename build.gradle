@@ -1,0 +1,25 @@
+plugins {
+    id 'java'
+    id 'net.neoforged.moddev' version '0.1.110'
+}
+
+version = '1.0.0'
+group = 'ghost'
+base { archivesName = 'ghost' }
+
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+
+// AE2 is a COMPILE-ONLY dependency and is never bundled or redistributed -
+// it is All Rights Reserved. The jar lives in libs/ (gitignored); drop your own
+// copy there to build the AE2 bridge. Without it the build still succeeds, and
+// Ghost simply reports ME networks as unavailable at runtime.
+dependencies {
+    compileOnly files('libs/appliedenergistics2-19.2.17.jar')
+}
+
+neoForge {
+    // No mod is a compile dependency. Crops, soils and accelerators are read
+    // through vanilla blockstate properties by name, so this reports on mods it
+    // has never heard of - which is the point of a survey tool.
+    version = '21.1.234'
+}

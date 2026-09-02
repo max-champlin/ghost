@@ -1,0 +1,44 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "MIT"
+
+[[mods]]
+modId = "ghost"
+version = "1.0.0"
+displayName = "Ghost"
+description = '''
+A ghost in your world: something with eyes and hands that is never actually
+present. In game it answers to Shelby.
+
+Ghost gives an outside program - an assistant, a script, a server operator's
+tooling - a way to see and act on a LIVE modded world through plain files. No
+network protocol, no client, nothing to keep in sync with six hundred mods,
+because it runs inside the game rather than talking to it.
+
+  eyes    /ghost here | box | watch    reads live blocks: crops and their age,
+                                       soil, moisture, accelerators, light
+  hands   ghost/inbox.json             place, break, use, run commands, scan
+  ears    every line of chat, logged, with coordinates
+  voice   prints back into chat as [Shelby]
+
+The bridge is disarmed at every start and must be turned on deliberately.
+Breaking honours the buildinggadgets2:deny tag, batches are capped, and the
+inbox is consumed before it runs so a stale file cannot replay itself.
+
+Works on a dedicated server exactly as it does in single player - all of it is
+server side.
+'''
+
+[[dependencies.ghost]]
+    modId = "neoforge"
+    type = "required"
+    versionRange = "[21.1,)"
+    ordering = "NONE"
+    side = "BOTH"
+
+[[dependencies.ghost]]
+    modId = "minecraft"
+    type = "required"
+    versionRange = "[1.21.1,1.22)"
+    ordering = "NONE"
+    side = "BOTH"

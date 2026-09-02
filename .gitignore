@@ -1,0 +1,19 @@
+# Build output
+build/
+.gradle/
+out/
+
+# Third-party mod jars used only to compile against.
+# These are other people's work and are not ours to redistribute - see the
+# README for how to supply your own copy.
+libs/*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Runtime data written by the mod, not source
+run/
+ghost/*.jsonl
+ghost/*.json
