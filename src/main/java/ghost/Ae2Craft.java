@@ -90,8 +90,11 @@ public final class Ae2Craft {
         }
         AEKey key = AEItemKey.of(item);
         if (!service.isCraftable(key)) {
-            return "the network has no pattern for " + label(item)
-                    + " - it can only craft what it has a pattern for";
+            // No pattern is not the end of it. AE2's rule - only what someone
+            // encoded - is right for a factory and wrong for an assistant, when
+            // the ingredients are sitting in the network and the recipe is
+            // ordinary knowledge. Do it by hand instead.
+            return Ae2Direct.attempt(level, grid, item, amount, requester);
         }
 
         IActionSource source = requester != null
