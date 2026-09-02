@@ -444,6 +444,14 @@ public final class Bridge {
                     Item want = BuiltInRegistries.ITEM.get(
                             ResourceLocation.parse(a.get("item").getAsString()));
                     String status = Storage.craft(level, at, r, want, amount, who);
+                    // Say it out loud as well as returning it. A craft that
+                    // fails immediately - no network, no pattern - has its whole
+                    // answer right here, and the person who asked in chat is
+                    // standing there waiting for it. Only the slow path used to
+                    // reach them, so a quick "no" arrived as silence.
+                    if (who != null) {
+                        Chat.reply(who, status);
+                    }
                     res.addProperty("ok", true);
                     res.addProperty("status", status);
                     res.addProperty("rank", Perms.rank(who));

@@ -9,17 +9,21 @@ base { archivesName = 'ghost' }
 
 java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
 
-// AE2 is a COMPILE-ONLY dependency and is never bundled or redistributed -
-// it is All Rights Reserved. The jar lives in libs/ (gitignored); drop your own
-// copy there to build the AE2 bridge. Without it the build still succeeds, and
-// Ghost simply reports ME networks as unavailable at runtime.
-dependencies {
-    compileOnly files('libs/appliedenergistics2-19.2.17.jar')
+neoForge {
+    version = '21.1.234'
 }
 
-neoForge {
-    // No mod is a compile dependency. Crops, soils and accelerators are read
-    // through vanilla blockstate properties by name, so this reports on mods it
-    // has never heard of - which is the point of a survey tool.
-    version = '21.1.234'
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Applied Energistics 2, API only, compile only.
+    //
+    // AE2 publishes this artifact to Maven Central precisely so other mods can
+    // build against it, so nothing has to be vendored into the repository and
+    // nobody has to hunt down a jar to compile. It is never needed at runtime -
+    // players install AE2 the normal way, and every AE2 call in this mod is
+    // guarded by a ModList check so the mod runs fine without it.
+    compileOnly 'org.appliedenergistics:appliedenergistics2:19.2.17:api'
 }

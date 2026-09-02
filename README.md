@@ -150,24 +150,38 @@ act on a world the moment it launched would be a hole in the wall.
 
 ## Building
 
-Ghost compiles against AE2's API but does **not** redistribute it. Drop your own
-copy into `libs/`:
-
-```
-libs/appliedenergistics2-19.2.17.jar
-```
-
-Then:
-
 ```
 gradle build
 ```
+
+That is the whole of it. AE2 is pulled from Maven Central as an **API-only,
+compile-only** dependency, which is exactly what that artifact is published for:
+
+```gradle
+compileOnly 'org.appliedenergistics:appliedenergistics2:19.2.17:api'
+```
+
+Nothing of AE2 is vendored into this repository or bundled into the built jar -
+verified, the jar contains zero `appeng` classes. AE2 is never needed at runtime
+either; players install it the normal way, and every AE2 call here is guarded by
+a `ModList` check so Ghost runs fine without it.
 
 ## Status
 
 Working and in daily use on a 613-mod Minecraft 1.21.1 pack. Not yet released to
 Modrinth or CurseForge.
 
+## Credits
+
+**[Applied Energistics 2](https://github.com/AppliedEnergistics/Applied-Energistics-2)**
+by Team Applied Energistics (LGPL-3.0). Ghost integrates with AE2 through its
+published API and ships none of its code. The AE2 integration here exists because
+that team publishes a clean, documented API artifact for other mods to build
+against — this would have been guesswork otherwise.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
+
+Ghost's own code only. AE2 remains under its own licence and is not redistributed
+here in any form.
