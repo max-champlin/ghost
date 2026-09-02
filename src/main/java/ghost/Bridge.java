@@ -463,7 +463,12 @@ public final class Bridge {
                     long amount = a.has("count") ? a.get("count").getAsLong() : 1L;
                     Item want = BuiltInRegistries.ITEM.get(
                             ResourceLocation.parse(a.get("item").getAsString()));
-                    String status = Storage.craft(level, at, r, want, amount, who);
+                    // "check": true plans the craft and reports what it would
+                    // need, taking nothing. The safe way to approach a big
+                    // build - find out what is missing before anything is
+                    // spent, rather than discovering it halfway through.
+                    boolean checkOnly = a.has("check") && a.get("check").getAsBoolean();
+                    String status = Storage.craft(level, at, r, want, amount, who, checkOnly);
                     // Say it out loud as well as returning it. A craft that
                     // fails immediately - no network, no pattern - has its whole
                     // answer right here, and the person who asked in chat is
@@ -476,7 +481,8 @@ public final class Bridge {
                     res.addProperty("status", status);
                     res.addProperty("rank", Perms.rank(who));
                     // The real answer lands in chat a tick or more from now.
-                    res.addProperty("async", true);
+                    res.addProperty("async", !checkOnly);
+                    res.addProperty("check", checkOnly);
                 }
             }
             case "find" -> {

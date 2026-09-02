@@ -69,7 +69,8 @@ public final class Ae2Craft {
                            UUID requester,
                            String label,
                            long amount,
-                           long deadline) {
+                           long deadline,
+                           boolean checkOnly) {
     }
 
     private static final List<Pending> PENDING = new ArrayList<>();
@@ -79,7 +80,8 @@ public final class Ae2Craft {
      * the real outcome arrives later, through {@link #tick}.
      */
     public static String start(ServerLevel level, BlockPos centre, int radius,
-                               Item item, long amount, ServerPlayer requester) {
+                               Item item, long amount, ServerPlayer requester,
+                               boolean checkOnly) {
         IGrid grid = gridNear(level, centre, radius);
         if (grid == null) {
             return "no ME network within " + radius + " blocks of there";
@@ -94,7 +96,7 @@ public final class Ae2Craft {
             // encoded - is right for a factory and wrong for an assistant, when
             // the ingredients are sitting in the network and the recipe is
             // ordinary knowledge. Do it by hand instead.
-            return Ae2Direct.attempt(level, grid, item, amount, requester);
+            return Ae2Direct.attempt(level, grid, item, amount, requester, checkOnly);
         }
 
         IActionSource source = requester != null
@@ -121,8 +123,9 @@ public final class Ae2Craft {
             PENDING.add(new Pending(future, service,
                     requester != null ? requester.getUUID() : null,
                     label(item), amount,
-                    level.getGameTime() + PLAN_TIMEOUT));
-            return "working out how to make " + amount + "x " + label(item);
+                    level.getGameTime() + PLAN_TIMEOUT, checkOnly));
+            return (checkOnly ? "checking whether I can make " : "working out how to make ")
+                    + amount + "x " + label(item);
         } catch (Exception e) {
             Ghost.LOG.error("crafting calculation would not start", e);
             return "the network refused the request";
@@ -168,11 +171,19 @@ public final class Ae2Craft {
         // A simulation is AE2's way of saying "this is what it WOULD take" -
         // the job cannot actually run as asked.
         if (plan.simulation()) {
-            report(server, job, "cannot make " + job.amount() + "x " + job.label()
-                    + " - short of " + missing(plan));
+            report(server, job, (job.checkOnly() ? "would be short of " + missing(plan)
+                    + " to make " + job.amount() + "x " + job.label()
+                    : "cannot make " + job.amount() + "x " + job.label()
+                            + " - short of " + missing(plan)));
             return;
         }
 
+        if (job.checkOnly()) {
+            report(server, job, "can make " + job.amount() + "x " + job.label()
+                    + " - the network has a pattern and the materials ("
+                    + plan.bytes() + " bytes). Nothing submitted.");
+            return;
+        }
         ServerPlayer player = player(server, job);
         IActionSource source = player != null
                 ? IActionSource.ofPlayer(player)

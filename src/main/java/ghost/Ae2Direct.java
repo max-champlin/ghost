@@ -67,7 +67,7 @@ final class Ae2Direct {
      * @return a human-readable outcome, always - success or the reason not
      */
     static String attempt(ServerLevel level, IGrid grid, Item want, long amount,
-                          ServerPlayer requester) {
+                          ServerPlayer requester, boolean checkOnly) {
         IStorageService storageService = grid.getService(IStorageService.class);
         if (storageService == null) {
             return "that network has no storage to draw on";
@@ -98,10 +98,16 @@ final class Ae2Direct {
             Plan plan = plan(storage, holder.value(), batches);
             if (!plan.missing.isEmpty()) {
                 if (shortfall == null) {
-                    shortfall = "cannot make " + want.getDescription().getString()
-                            + " by hand - short of " + summarise(plan.missing);
+                    shortfall = (checkOnly ? "would be short of " : "cannot make "
+                            + want.getDescription().getString() + " by hand - short of ")
+                            + summarise(plan.missing);
                 }
                 continue;
+            }
+            if (checkOnly) {
+                return "can make " + ((long) batches * per) + "x "
+                        + result.getHoverName().getString() + " - would use "
+                        + describe(plan.take) + ". Nothing taken.";
             }
             return execute(storage, source, plan, result, batches, per, requester);
         }
@@ -228,6 +234,29 @@ final class Ae2Direct {
             }
             left -= size;
         }
+    }
+
+    /** What a plan would consume, for a dry run that must not surprise anyone. */
+    private static String describe(Map<AEItemKey, Long> take) {
+        StringBuilder sb = new StringBuilder();
+        int shown = 0;
+        int more = 0;
+        for (Map.Entry<AEItemKey, Long> entry : take.entrySet()) {
+            if (shown < MISSING_SHOWN) {
+                if (shown > 0) {
+                    sb.append(", ");
+                }
+                sb.append(entry.getValue()).append("x ")
+                        .append(entry.getKey().getDisplayName().getString());
+                shown++;
+            } else {
+                more++;
+            }
+        }
+        if (more > 0) {
+            sb.append(" and ").append(more).append(" more");
+        }
+        return sb.length() == 0 ? "nothing" : sb.toString();
     }
 
     /** A readable name for what an ingredient wanted. */

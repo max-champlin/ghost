@@ -71,12 +71,13 @@ public final class Storage {
      */
     public static String craft(ServerLevel level, BlockPos centre, int radius,
                                Item want, long amount,
-                               net.minecraft.server.level.ServerPlayer requester) {
+                               net.minecraft.server.level.ServerPlayer requester,
+                               boolean checkOnly) {
         if (!ae2Loaded()) {
             return "AE2 is not installed";
         }
         try {
-            return Ae2Craft.start(level, centre, radius, want, amount, requester);
+            return Ae2Craft.start(level, centre, radius, want, amount, requester, checkOnly);
         } catch (Throwable t) {
             Ghost.LOG.error("AE2 craft failed", t);
             return "the crafting request failed";
