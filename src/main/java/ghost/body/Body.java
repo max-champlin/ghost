@@ -12,8 +12,10 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
@@ -75,6 +77,9 @@ public class Body extends PathfinderMob {
 
     /** Beyond this it stops trying to walk and simply steps across. */
     private static final double TELEPORT_AT = 24.0;
+
+    /** Ticks between the little puffs that mean "still working on it". */
+    private static final int WORKING_PARTICLE_INTERVAL = 8;
 
     /** How often the keep-up check runs. Once a second is plenty. */
     private static final int KEEP_UP_INTERVAL = 20;
@@ -189,9 +194,56 @@ public class Body extends PathfinderMob {
     protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(1, new FollowPlayerGoal(this));
-        goalSelector.addGoal(2, new WaterAvoidingRandomStrollGoal(this, 0.7));
+        // She wanders only while the bridge is armed. With it off she cannot
+        // act on anything, and drifting around as though she might is the
+        // wrong impression to give.
+        goalSelector.addGoal(2, new WaterAvoidingRandomStrollGoal(this, 0.7) {
+            @Override
+            public boolean canUse() {
+                return ghost.Bridge.armed() && super.canUse();
+            }
+        });
         goalSelector.addGoal(3, new LookAtPlayerGoal(this, Player.class, 10.0F));
         goalSelector.addGoal(4, new RandomLookAroundGoal(this));
+    }
+
+    // --- what she looks like she is doing ---------------------------------
+
+    /**
+     * Posture as an honest status light.
+     *
+     * <p>Ghost's whole design refuses to look busier than it is, and this is the
+     * same rule applied to a body. Rather than inventing idle animation for its
+     * own sake, what she does with herself reports the actual state of the
+     * system:
+     *
+     * <ul>
+     *   <li><b>settled</b> - the bridge is disarmed, nothing can reach her, and
+     *       she is sitting it out. Visible from across the room without typing
+     *       a command</li>
+     *   <li><b>upright</b> - armed and available</li>
+     *   <li><b>working</b> - actions in flight, or AE2 still thinking about a
+     *       craft. Shown with a few particles, because "waiting on a background
+     *       thread" has no natural pose</li>
+     * </ul>
+     *
+     * <p>She never crouches while moving: a crouch-walk reads as sneaking
+     * rather than resting, which would say the wrong thing entirely.
+     */
+    private void showState() {
+        boolean armed = ghost.Bridge.armed();
+        boolean settled = !armed && getNavigation().isDone();
+        Pose wanted = settled ? Pose.CROUCHING : Pose.STANDING;
+        if (getPose() != wanted) {
+            setPose(wanted);
+        }
+
+        if (armed && (ghost.Bridge.busy() || ghost.Storage.craftPending())
+                && tickCount % WORKING_PARTICLE_INTERVAL == 0
+                && level() instanceof ServerLevel server) {
+            server.sendParticles(ParticleTypes.ENCHANT,
+                    getX(), getY() + 1.9, getZ(), 4, 0.25, 0.15, 0.25, 0.0);
+        }
     }
 
     // --- who we are following --------------------------------------------
@@ -251,6 +303,7 @@ public class Body extends PathfinderMob {
     @Override
     protected void customServerAiStep() {
         super.customServerAiStep();
+        showState();
         if (--keepUpCooldown > 0) {
             return;
         }

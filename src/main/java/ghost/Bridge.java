@@ -95,6 +95,16 @@ public final class Bridge {
         }
     }
 
+    /**
+     * Whether the bridge has work in flight right now.
+     *
+     * <p>Read by the body so that being busy is visible from across the room
+     * rather than only in a log file.
+     */
+    public static boolean busy() {
+        return !QUEUE.isEmpty() || pendingWait != null;
+    }
+
     public static String status() {
         return (armed ? "ARMED" : "disarmed")
                 + ", queue " + QUEUE.size()

@@ -75,6 +75,11 @@ public final class Ae2Craft {
 
     private static final List<Pending> PENDING = new ArrayList<>();
 
+    /** True while AE2 is still thinking about a craft we asked for. */
+    static boolean thinking() {
+        return !PENDING.isEmpty();
+    }
+
     /**
      * Begin a craft. Returns a human-readable status for the immediate reply -
      * the real outcome arrives later, through {@link #tick}.

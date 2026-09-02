@@ -84,6 +84,18 @@ public final class Storage {
         }
     }
 
+    /** Whether a crafting calculation is outstanding. False without AE2. */
+    public static boolean craftPending() {
+        if (!ae2Loaded()) {
+            return false;
+        }
+        try {
+            return Ae2Craft.thinking();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** Advance any in-flight crafting calculations. No-op without AE2. */
     public static void tickCrafting(net.minecraft.server.MinecraftServer server) {
         if (!ae2Loaded()) {
