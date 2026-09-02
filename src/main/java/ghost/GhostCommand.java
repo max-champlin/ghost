@@ -108,7 +108,7 @@ public final class GhostCommand {
 
         root.then(Commands.literal("stop").executes(ctx -> {
             Watch.stop();
-            ctx.getSource().sendSuccess(() -> Component.literal("Shelby: watch stopped"), false);
+            ctx.getSource().sendSuccess(() -> Component.literal("Shelby: watch stopped."), false);
             return 1;
         }));
 
@@ -130,13 +130,13 @@ public final class GhostCommand {
                 .then(Commands.literal("on").executes(ctx -> {
                     Bridge.arm(true);
                     ctx.getSource().sendSuccess(() -> Component.literal(
-                            "Shelby: bridge ARMED - reads ghost/inbox.json"), true);
+                            "Shelby: bridge open. I am reading ghost/inbox.json."), true);
                     return 1;
                 }))
                 .then(Commands.literal("off").executes(ctx -> {
                     Bridge.arm(false);
                     ctx.getSource().sendSuccess(() -> Component.literal(
-                            "Shelby: bridge disarmed, queue cleared"), true);
+                            "Shelby: bridge closed, queue cleared."), true);
                     return 1;
                 })));
 
@@ -267,7 +267,7 @@ public final class GhostCommand {
     private static int have(CommandSourceStack src, String id, int radius) {
         var item = Finder.item(id);
         if (item == net.minecraft.world.item.Items.AIR) {
-            src.sendFailure(Component.literal("Shelby: no such item - " + id));
+            src.sendFailure(Component.literal("Shelby: I know of no such item - " + id));
             return 0;
         }
         if (src.getPlayer() == null) {
@@ -276,7 +276,7 @@ public final class GhostCommand {
             // and reporting a confident zero.
             src.sendFailure(Component.literal(
                     "Shelby: run that as a player, or use the bridge's \"have\" "
-                            + "action which takes a position"));
+                            + "action, which takes a position."));
             return 0;
         }
         Finder.Found f = Finder.count(src.getLevel(), src.getPlayer(), item, radius);
@@ -302,19 +302,19 @@ public final class GhostCommand {
     private static int can(CommandSourceStack src, String id, int radius) {
         var item = Finder.item(id);
         if (item == net.minecraft.world.item.Items.AIR) {
-            src.sendFailure(Component.literal("Shelby: no such item - " + id));
+            src.sendFailure(Component.literal("Shelby: I know of no such item - " + id));
             return 0;
         }
         var needs = Finder.canCraft(src.getLevel(), src.getPlayer(), item, radius);
         if (needs.isEmpty()) {
             src.sendSuccess(() -> Component.literal(
-                    "Shelby: no crafting recipe found for " + id), false);
+                    "Shelby: I can find no crafting recipe for " + id), false);
             return 1;
         }
         boolean all = needs.stream().allMatch(Finder.Need::satisfied);
         src.sendSuccess(() -> Component.literal(all
-                ? "Shelby: yes - you have everything for " + id
-                : "Shelby: not yet - " + id + " is missing:"), false);
+                ? "Shelby: yes, you have everything for " + id
+                : "Shelby: not yet. " + id + " is missing:"), false);
         for (Finder.Need n : needs) {
             if (!all && n.satisfied()) {
                 continue;                    // only list what is short
@@ -348,7 +348,7 @@ public final class GhostCommand {
             return 1;
         } catch (Exception e) {
             Ghost.LOG.error("scan failed", e);
-            src.sendFailure(Component.literal("Shelby: scan failed - " + e));
+            src.sendFailure(Component.literal("Shelby: the scan failed - " + e));
             return 0;
         }
     }
@@ -374,18 +374,18 @@ public final class GhostCommand {
             final int n = removed;
             src.sendSuccess(() -> Component.literal(n > 0
                     ? "Shelby: body away (" + n + ")"
-                    : "Shelby: no body to send away"), false);
+                    : "Shelby: there is no body to send away."), false);
             return 1;
         }
         ghost.body.Body b = ghost.body.Bodies.SHELBY.get().create(level);
         if (b == null) {
-            src.sendFailure(Component.literal("Shelby: could not create a body"));
+            src.sendFailure(Component.literal("Shelby: I could not create a body."));
             return 0;
         }
         net.minecraft.world.phys.Vec3 p = src.getPosition();
         b.moveTo(p.x, p.y, p.z, src.getRotation().y, 0.0F);
         if (!level.addFreshEntity(b)) {
-            src.sendFailure(Component.literal("Shelby: could not place a body here"));
+            src.sendFailure(Component.literal("Shelby: I could not place a body here."));
             return 0;
         }
         src.sendSuccess(() -> Component.literal("Shelby: standing up"), false);

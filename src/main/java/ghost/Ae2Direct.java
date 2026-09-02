@@ -70,7 +70,7 @@ final class Ae2Direct {
                           ServerPlayer requester, boolean checkOnly) {
         IStorageService storageService = grid.getService(IStorageService.class);
         if (storageService == null) {
-            return "that network has no storage to draw on";
+            return "That network has no storage to draw on.";
         }
         MEStorage storage = storageService.getInventory();
         IActionSource source = requester != null
@@ -79,8 +79,8 @@ final class Ae2Direct {
 
         List<RecipeHolder<CraftingRecipe>> candidates = recipesFor(level, want);
         if (candidates.isEmpty()) {
-            return "there is no crafting recipe for " + want.getDescription().getString()
-                    + " that I can do by hand";
+            return "There is no crafting recipe for " + want.getDescription().getString()
+                    + " that I can manage by hand.";
         }
 
         // Several recipes can make the same item. Try each and take the first
@@ -98,21 +98,21 @@ final class Ae2Direct {
             Plan plan = plan(storage, holder.value(), batches);
             if (!plan.missing.isEmpty()) {
                 if (shortfall == null) {
-                    shortfall = (checkOnly ? "would be short of " : "cannot make "
-                            + want.getDescription().getString() + " by hand - short of ")
+                    shortfall = (checkOnly ? "You would be short of " : "I cannot manage "
+                            + want.getDescription().getString() + " by hand. You are short of ")
                             + summarise(plan.missing);
                 }
                 continue;
             }
             if (checkOnly) {
-                return "can make " + ((long) batches * per) + "x "
-                        + result.getHoverName().getString() + " - would use "
-                        + describe(plan.take) + ". Nothing taken.";
+                return "I can make " + ((long) batches * per) + "x "
+                        + result.getHoverName().getString() + " by hand. It would use "
+                        + describe(plan.take) + ". Nothing has been taken.";
             }
             return execute(storage, source, plan, result, batches, per, requester);
         }
         return shortfall != null ? shortfall
-                : "I could not work out a way to make that from what is in the network";
+                : "I could not contrive a way to make that from what the network holds.";
     }
 
     /** Every crafting-table recipe whose result is this item. */
@@ -193,9 +193,9 @@ final class Ae2Direct {
             long could = storage.extract(entry.getKey(), entry.getValue(),
                     Actionable.SIMULATE, source);
             if (could < entry.getValue()) {
-                return "the network would not release "
+                return "The network would not release "
                         + entry.getKey().getDisplayName().getString()
-                        + " - it may be in a locked or read-only cell";
+                        + ". It may be in a locked or read-only cell.";
             }
         }
         for (Map.Entry<AEItemKey, Long> entry : plan.take.entrySet()) {
@@ -212,15 +212,16 @@ final class Ae2Direct {
             // The network had no room. Hand it over rather than voiding it -
             // the ingredients are already spent.
             handOver(requester, result, leftover);
-            return "made " + made + "x " + name + " by hand - " + stored
-                    + " into the network, " + leftover + " straight to you (network full)";
+            return "Made " + made + "x " + name + " by hand. " + stored
+                    + " into the network; the network was full, so the remaining "
+                    + leftover + " are with you.";
         }
         if (leftover > 0) {
-            return "made " + made + "x " + name + " but only " + stored
-                    + " would fit in the network";
+            return "Made " + made + "x " + name + ", though only " + stored
+                    + " would fit in the network.";
         }
-        return "made " + made + "x " + name + " by hand from network stock"
-                + (batches > 1 ? " (" + batches + " crafts)" : "");
+        return "Made " + made + "x " + name + " by hand from network stock"
+                + (batches > 1 ? ", " + batches + " crafts." : ".");
     }
 
     /** Give the player the overflow, or drop it at their feet. */

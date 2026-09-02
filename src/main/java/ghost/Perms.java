@@ -99,12 +99,11 @@ public final class Perms {
     /** Why a refusal happened, in words meant for chat rather than a log. */
     public static String refusal(Ability ability) {
         return switch (ability) {
-            case CRAFT -> "I can look things up for you, but spending the network "
-                    + "on a craft needs operator rank.";
-            case WORLD -> "I am not allowed to change blocks for you - that needs "
-                    + "operator rank.";
-            case COMMAND -> "Running server commands needs admin rank.";
-            default -> "That needs a higher rank than you have.";
+            case CRAFT -> "I can look things up for you, but committing the network "
+                    + "to a craft is above your clearance.";
+            case WORLD -> "Altering the world on your behalf is above your clearance.";
+            case COMMAND -> "Server commands require administrator clearance, I am afraid.";
+            default -> "That is above your clearance.";
         };
     }
 }

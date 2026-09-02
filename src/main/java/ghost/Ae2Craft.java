@@ -89,11 +89,11 @@ public final class Ae2Craft {
                                boolean checkOnly) {
         IGrid grid = gridNear(level, centre, radius);
         if (grid == null) {
-            return "no ME network within " + radius + " blocks of there";
+            return "I can find no ME network within " + radius + " blocks of there.";
         }
         ICraftingService service = grid.getService(ICraftingService.class);
         if (service == null) {
-            return "that network has no crafting service";
+            return "That network has no crafting service to speak of.";
         }
         AEKey key = AEItemKey.of(item);
         if (!service.isCraftable(key)) {
@@ -129,11 +129,11 @@ public final class Ae2Craft {
                     requester != null ? requester.getUUID() : null,
                     label(item), amount,
                     level.getGameTime() + PLAN_TIMEOUT, checkOnly));
-            return (checkOnly ? "checking whether I can make " : "working out how to make ")
+            return (checkOnly ? "Checking whether I can make " : "Working out how to make ")
                     + amount + "x " + label(item);
         } catch (Exception e) {
             Ghost.LOG.error("crafting calculation would not start", e);
-            return "the network refused the request";
+            return "The network declined the request.";
         }
     }
 
@@ -151,8 +151,8 @@ public final class Ae2Craft {
         PENDING.removeIf(job -> {
             if (now > job.deadline()) {
                 job.future().cancel(true);
-                report(server, job, "gave up working out " + job.label()
-                        + " - the calculation took too long");
+                report(server, job, "I have abandoned the calculation for " + job.label()
+                        + ". It was taking rather too long.");
                 return true;
             }
             if (!job.future().isDone()) {
@@ -162,7 +162,7 @@ public final class Ae2Craft {
                 complete(server, job, job.future().get());
             } catch (Exception e) {
                 Ghost.LOG.error("crafting calculation failed", e);
-                report(server, job, "the calculation for " + job.label() + " failed");
+                report(server, job, "The calculation for " + job.label() + " failed, I am afraid.");
             }
             return true;
         });
@@ -170,23 +170,23 @@ public final class Ae2Craft {
 
     private static void complete(MinecraftServer server, Pending job, ICraftingPlan plan) {
         if (plan == null) {
-            report(server, job, "no plan came back for " + job.label());
+            report(server, job, "No workable plan came back for " + job.label() + ".");
             return;
         }
         // A simulation is AE2's way of saying "this is what it WOULD take" -
         // the job cannot actually run as asked.
         if (plan.simulation()) {
-            report(server, job, (job.checkOnly() ? "would be short of " + missing(plan)
-                    + " to make " + job.amount() + "x " + job.label()
-                    : "cannot make " + job.amount() + "x " + job.label()
-                            + " - short of " + missing(plan)));
+            report(server, job, (job.checkOnly() ? "You would be short of " + missing(plan)
+                    + " for " + job.amount() + "x " + job.label() + "."
+                    : "I cannot make " + job.amount() + "x " + job.label()
+                            + ". You are short of " + missing(plan) + "."));
             return;
         }
 
         if (job.checkOnly()) {
-            report(server, job, "can make " + job.amount() + "x " + job.label()
-                    + " - the network has a pattern and the materials ("
-                    + plan.bytes() + " bytes). Nothing submitted.");
+            report(server, job, "I can make " + job.amount() + "x " + job.label()
+                    + " - the network has both a pattern and the materials ("
+                    + plan.bytes() + " bytes). Nothing has been submitted.");
             return;
         }
         ServerPlayer player = player(server, job);
@@ -200,15 +200,15 @@ public final class Ae2Craft {
             ICraftingSubmitResult result =
                     job.service().submitJob(plan, null, null, false, source);
             if (result != null && result.successful()) {
-                report(server, job, "crafting " + job.amount() + "x " + job.label()
-                        + " - job submitted (" + plan.bytes() + " bytes)");
+                report(server, job, "Crafting " + job.amount() + "x " + job.label()
+                        + ". Job submitted, " + plan.bytes() + " bytes.");
             } else {
-                report(server, job, "the network would not take the job for "
+                report(server, job, "The network would not accept the job for "
                         + job.label() + reason(result));
             }
         } catch (Exception e) {
             Ghost.LOG.error("could not submit crafting job", e);
-            report(server, job, "could not submit the job for " + job.label());
+            report(server, job, "I could not submit the job for " + job.label() + ".");
         }
     }
 
@@ -238,7 +238,7 @@ public final class Ae2Craft {
             }
         }
         if (shown == 0) {
-            return "something it will not name";
+            return "something it declines to name";
         }
         if (more > 0) {
             sb.append(" and ").append(more).append(" more");

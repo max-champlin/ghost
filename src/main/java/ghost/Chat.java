@@ -110,14 +110,15 @@ public final class Chat {
         }
         StringBuilder sb = new StringBuilder();
         if (!Bridge.armed()) {
-            sb.append("heard you - \"").append(asked).append("\"");
-            sb.append("  |  but my bridge is OFF, so I cannot go and look. /ghost bridge on");
+            sb.append("noted - \"").append(asked).append("\"");
+            sb.append("  |  my bridge is closed, however, so I cannot go and look. "
+                    + "/ghost bridge on");
             return sb.toString();
         }
-        sb.append("on it - \"").append(asked).append("\"");
+        sb.append("very good - \"").append(asked).append("\"");
         sb.append("  |  ").append(approach(player));
         if (pending > 1) {
-            sb.append("  |  ").append(pending).append(" queued");
+            sb.append("  |  ").append(pending).append(" others waiting");
         }
         return sb.toString();
     }
@@ -137,16 +138,16 @@ public final class Chat {
     private static String approach(ServerPlayer player) {
         ghost.body.Body body = ghost.body.Bodies.find(player.getServer());
         if (body == null) {
-            return "no body, looking from here";
+            return "I have no body at present - looking from here";
         }
         body.setFollowed(player.getUUID());
         if (body.level() != player.level()) {
-            return "coming through from "
+            return "on my way through from the "
                     + body.level().dimension().location().getPath();
         }
         double away = Math.sqrt(body.distanceToSqr(player));
         if (away < 6.0) {
-            return "right here";
+            return "I am right here";
         }
         return away <= 24.0
                 ? "walking over"
