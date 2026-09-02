@@ -75,6 +75,30 @@ public final class Bridge {
     private static JsonObject pendingWait;
     private static long waitDeadline;
 
+    /**
+     * An action parked until Shelby has physically got to where it happens.
+     *
+     * <p>Actions used to take effect at coordinates regardless of where she was
+     * standing, which made the body decorative - she could be told to break a
+     * block on the other side of the base and simply do it from the sofa. With
+     * {@code "go": true} the action waits until she is actually there.
+     *
+     * <p>Opt-in rather than always, deliberately. A twenty-step batch that
+     * walked between every step would turn a second of work into ten minutes,
+     * so presence is for the things worth watching, and speed is for the rest.
+     */
+    private static JsonObject pendingGo;
+    private static long goDeadline;
+
+    /** Set when a batch parks her somewhere on purpose, so she is not recalled. */
+    private static boolean stationed = false;
+
+    /** How close counts as "there". */
+    private static final double ARRIVED_WITHIN = 3.5;
+
+    /** Longest she may spend travelling before the action happens anyway. */
+    private static final int TRAVEL_TIMEOUT = 600;
+
     private static final Deque<JsonObject> QUEUE = new ArrayDeque<>();
     private static final JsonArray RESULTS = new JsonArray();
     private static int waitTicks = 0;
@@ -127,6 +151,34 @@ public final class Bridge {
             waitTicks--;
             return;
         }
+        if (pendingGo != null) {
+            ServerLevel lvl = level(server, pendingGo);
+            ghost.body.Body body = ghost.body.Bodies.find(server);
+            boolean there = body == null || body.arrived(ARRIVED_WITHIN);
+            boolean expired = lvl.getGameTime() >= goDeadline;
+            if (!there && !expired) {
+                return;                       // still on her way
+            }
+            JsonObject act = pendingGo;
+            pendingGo = null;
+            act.addProperty("__arrived", true);
+            JsonObject res = new JsonObject();
+            res.addProperty("action", act.has("do") ? act.get("do").getAsString() : "?");
+            res.addProperty("travelled", true);
+            res.addProperty("arrived", there);
+            try {
+                run(server, act, res);
+            } catch (Exception e) {
+                res.addProperty("ok", false);
+                res.addProperty("error", String.valueOf(e));
+                Ghost.LOG.error("bridge action failed after travel: {}", act, e);
+            }
+            RESULTS.add(res);
+            if (QUEUE.isEmpty()) {
+                finish(server);
+            }
+            return;
+        }
         if (pendingWait != null) {
             ServerLevel lvl = level(server, pendingWait);
             boolean met = conditionMet(lvl, pendingWait);
@@ -141,7 +193,7 @@ public final class Bridge {
             RESULTS.add(res);
             pendingWait = null;
             if (QUEUE.isEmpty()) {
-                finish();
+                finish(server);
             }
             return;
         }
@@ -166,7 +218,7 @@ public final class Bridge {
         }
         RESULTS.add(res);
         if (QUEUE.isEmpty()) {
-            finish();
+            finish(server);
         }
     }
 
@@ -305,6 +357,26 @@ public final class Bridge {
         String what = a.get("do").getAsString();
         ServerLevel level = level(server, a);
 
+        // "go": true - send her there first, and run this when she arrives.
+        if (a.has("go") && a.get("go").getAsBoolean()
+                && a.has("at") && !a.has("__arrived")) {
+            ghost.body.Body body = ghost.body.Bodies.find(server);
+            if (body != null) {
+                BlockPos site = pos(a, "at");
+                body.postTo(site);
+                pendingGo = a;
+                goDeadline = level.getGameTime() + TRAVEL_TIMEOUT;
+                res.addProperty("ok", true);
+                res.addProperty("travelling", true);
+                res.addProperty("to", site.getX() + " " + site.getY() + " " + site.getZ());
+                return;
+            }
+            // No body to send. Do it from here rather than refusing - the work
+            // still needs doing, and saying so is better than silently pretending
+            // she went.
+            res.addProperty("noBody", true);
+        }
+
         switch (what) {
             case "wait" -> {
                 waitTicks = Math.max(0, a.get("ticks").getAsInt());
@@ -436,6 +508,31 @@ public final class Bridge {
                                 a.has("type") ? a.get("type").getAsString() : null))));
                 res.addProperty("ok", true);
             }
+            case "post" -> {
+                // Station her somewhere until told otherwise. Unlike "go", this
+                // survives the end of the batch - for when the work is where she
+                // should be, not a errand to run and come back from.
+                ghost.body.Body body = ghost.body.Bodies.find(server);
+                BlockPos site = a.has("at") ? pos(a, "at") : anchor(server, level);
+                if (body == null) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "no body to station");
+                } else {
+                    body.postTo(site);
+                    stationed = true;
+                    res.addProperty("ok", true);
+                    res.addProperty("posted", site.getX() + " " + site.getY() + " " + site.getZ());
+                }
+            }
+            case "return" -> {
+                ghost.body.Body body = ghost.body.Bodies.find(server);
+                if (body != null) {
+                    body.clearPost();
+                }
+                stationed = false;
+                res.addProperty("ok", true);
+                res.addProperty("returning", true);
+            }
             case "have" -> {
                 // Counts from a POSITION, not from a player.
                 //
@@ -530,7 +627,17 @@ public final class Bridge {
         return BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString();
     }
 
-    private static void finish() {
+    private static void finish(MinecraftServer server) {
+        // The errand is over: come back. A body that stays where the last
+        // action happened would drift across the base one job at a time and
+        // never be where you are, which is the opposite of having one.
+        if (!stationed) {
+            ghost.body.Body body = ghost.body.Bodies.find(server);
+            if (body != null) {
+                body.clearPost();
+            }
+        }
+
         JsonObject out = new JsonObject();
         out.addProperty("finishedAt", java.time.OffsetDateTime.now().toString());
         out.addProperty("batch", batches);

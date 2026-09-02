@@ -97,6 +97,15 @@ public class Body extends PathfinderMob {
     private int keepUpCooldown;
     private int unpathableTicks;
 
+    /**
+     * A job site she has been sent to, or null when she is simply with you.
+     *
+     * <p>While posted she stops following. An assistant that trots after you
+     * while supposedly away doing something is not away doing something, and
+     * the point of sending her is that the work happens somewhere you are not.
+     */
+    private BlockPos post;
+
     public Body(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
         setPersistenceRequired();
@@ -110,6 +119,30 @@ public class Body extends PathfinderMob {
         for (EquipmentSlot slot : EquipmentSlot.values()) {
             setGuaranteedDrop(slot);
         }
+    }
+
+    // --- being sent somewhere ---------------------------------------------
+
+    /** Send her to a job site. She will stay there until released. */
+    public void postTo(BlockPos site) {
+        this.post = site;
+        this.unpathableTicks = 0;
+    }
+
+    /** Release her; she goes back to keeping up with whoever she follows. */
+    public void clearPost() {
+        this.post = null;
+    }
+
+    public boolean posted() {
+        return post != null;
+    }
+
+    /** Close enough to the job to be considered there. */
+    public boolean arrived(double within) {
+        return post != null
+                && distanceToSqr(post.getX() + 0.5, post.getY(), post.getZ() + 0.5)
+                        <= within * within;
     }
 
     // --- getting dressed --------------------------------------------------
@@ -309,6 +342,12 @@ public class Body extends PathfinderMob {
         }
         keepUpCooldown = KEEP_UP_INTERVAL;
 
+        // A posting outranks the player. She is at work.
+        if (post != null) {
+            travelToPost();
+            return;
+        }
+
         Player p = followed();
         if (p == null) {
             unpathableTicks = 0;
@@ -345,6 +384,31 @@ public class Body extends PathfinderMob {
             }
         } else {
             unpathableTicks = 0;
+        }
+    }
+
+    /**
+     * Make her way to the job site, by the same rules she follows a player by:
+     * walk when walking is reasonable, step across when it is not.
+     */
+    private void travelToPost() {
+        if (arrived(3.0)) {
+            unpathableTicks = 0;
+            return;
+        }
+        double d2 = distanceToSqr(post.getX() + 0.5, post.getY(), post.getZ() + 0.5);
+        if (d2 > TELEPORT_AT * TELEPORT_AT) {
+            stepAcrossTo(post);
+            unpathableTicks = 0;
+            return;
+        }
+        if (getNavigation().isDone()) {
+            if (++unpathableTicks >= UNPATHABLE_LIMIT) {
+                stepAcrossTo(post);
+                unpathableTicks = 0;
+            } else {
+                getNavigation().moveTo(post.getX() + 0.5, post.getY(), post.getZ() + 0.5, 1.0);
+            }
         }
     }
 
@@ -467,6 +531,9 @@ public class Body extends PathfinderMob {
 
         @Override
         public boolean canUse() {
+            if (body.posted()) {
+                return false;                 // she is at work
+            }
             Player p = body.followed();
             if (p == null || p.isSpectator() || p.level() != body.level()) {
                 return false;
@@ -480,7 +547,8 @@ public class Body extends PathfinderMob {
 
         @Override
         public boolean canContinueToUse() {
-            return target != null && target.isAlive() && !target.isSpectator()
+            return !body.posted()
+                    && target != null && target.isAlive() && !target.isSpectator()
                     && target.level() == body.level()
                     && body.distanceToSqr(target) > FOLLOW_STOP * FOLLOW_STOP;
         }
