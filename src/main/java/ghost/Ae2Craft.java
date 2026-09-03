@@ -273,39 +273,20 @@ public final class Ae2Craft {
     }
 
     /**
-     * Find a grid by walking outward from a point.
+     * The nearest live grid, or null.
      *
-     * <p>Uses AE2's in-world grid node capability, so anything a cable reaches
-     * is a valid door in - terminal, interface, drive, controller. Returns the
-     * first live grid found rather than collecting them all: crafting into an
+     * <p>Delegates to {@link Ae2#gridsNear}, which is the single place that
+     * knows how to find a network. This used to carry its own copy of that walk
+     * - and the read side carried a third, different one that looked for a
+     * capability drives do not expose and therefore found nothing. One
+     * implementation, so a fix to it is a fix everywhere.
+     *
+     * <p>Takes the first grid rather than collecting them: crafting into an
      * ambiguous set of networks is not a thing anyone wants.
      */
     private static IGrid gridNear(ServerLevel level, BlockPos centre, int radius) {
-        for (BlockPos p : BlockPos.betweenClosed(
-                centre.offset(-radius, -radius, -radius),
-                centre.offset(radius, radius, radius))) {
-            if (level.getBlockEntity(p) == null) {
-                continue;
-            }
-            IInWorldGridNodeHost host;
-            try {
-                host = level.getCapability(AECapabilities.IN_WORLD_GRID_NODE_HOST, p, null);
-            } catch (Exception e) {
-                continue;
-            }
-            if (host == null) {
-                continue;
-            }
-            for (Direction d : Direction.values()) {
-                try {
-                    IGridNode node = host.getGridNode(d);
-                    if (node != null && node.isActive() && node.getGrid() != null) {
-                        return node.getGrid();
-                    }
-                } catch (Exception ignored) {
-                    // a host that dislikes a particular face is not an error
-                }
-            }
+        for (IGrid grid : Ae2.gridsNear(level, centre, radius)) {
+            return grid;
         }
         return null;
     }
