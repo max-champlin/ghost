@@ -408,11 +408,40 @@ public final class Bridge {
                 res.addProperty("ok", level.destroyBlock(p, drop));
             }
             case "place" -> {
-                BlockPos p = pos(a, "at");
-                Block block = BuiltInRegistries.BLOCK.get(
-                        ResourceLocation.parse(a.get("block").getAsString()));
-                res.addProperty("ok", level.setBlockAndUpdate(p, block.defaultBlockState()));
-                res.addProperty("block", blockId(level.getBlockState(p)));
+                // Accepts "block" or "item". They named the same thing to every
+                // caller who was not reading the source, and asking for one by
+                // the other's name threw a NullPointerException out of
+                // getAsString() - a crash for a typo.
+                JsonElement which = a.has("block") ? a.get("block")
+                        : a.has("item") ? a.get("item") : null;
+                if (which == null) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "place needs \"block\" (or \"item\") naming what to place");
+                } else {
+                    ItemLookup.BlockResult found = ItemLookup.resolveBlock(which.getAsString());
+                    if (!found.ok()) {
+                        // Refusing matters more here than anywhere else: an
+                        // unknown id used to resolve to AIR and go straight into
+                        // setBlockAndUpdate, so a mistyped block DELETED whatever
+                        // was standing there instead of placing anything.
+                        res.addProperty("ok", false);
+                        res.addProperty("error", found.error);
+                        if (!found.candidates.isEmpty()) {
+                            res.add("candidates", JsonParser.parseString(
+                                    new Gson().toJson(found.candidates)));
+                        }
+                    } else {
+                        BlockPos p = pos(a, "at");
+                        String was = blockId(level.getBlockState(p));
+                        res.addProperty("ok",
+                                level.setBlockAndUpdate(p, found.block.defaultBlockState()));
+                        res.addProperty("was", was);
+                        res.addProperty("block", blockId(level.getBlockState(p)));
+                        if (found.resolvedFrom != null) {
+                            res.addProperty("resolvedFrom", found.resolvedFrom);
+                        }
+                    }
+                }
             }
             case "use" -> {
                 BlockPos p = pos(a, "at");

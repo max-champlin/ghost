@@ -121,4 +121,80 @@ public final class ItemLookup {
                 "\"" + query + "\" matches " + hits.size()
                         + " items - name one exactly", shown);
     }
+
+    /**
+     * The same three passes, for blocks.
+     *
+     * <p>Worth its own method rather than going through items, because the
+     * failure here is not merely a wrong answer. {@code BLOCK.get()} returns
+     * <b>AIR</b> for an id it does not know, and {@code place} feeds that
+     * straight to {@code setBlockAndUpdate} - so a mistyped block id does not
+     * fail to place something, it <b>deletes whatever was already there</b>.
+     * A silent wrong number is bad; a silent destructive edit is worse.
+     */
+    public static BlockResult resolveBlock(String query) {
+        String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty()) {
+            return new BlockResult(null, null, null, "no block given", List.of());
+        }
+        try {
+            ResourceLocation rl = ResourceLocation.parse(q);
+            net.minecraft.world.level.block.Block exact = BuiltInRegistries.BLOCK.get(rl);
+            if (exact != net.minecraft.world.level.block.Blocks.AIR
+                    || q.equals("minecraft:air") || q.equals("air")) {
+                return new BlockResult(exact, rl.toString(), null, null, List.of());
+            }
+        } catch (Exception ignored) {
+            // not a well-formed id; fall through to matching
+        }
+        List<String> endsWith = new ArrayList<>();
+        List<String> contains = new ArrayList<>();
+        String bare = q.contains(":") ? q.substring(q.indexOf(':') + 1) : q;
+        String needle = bare.replace(' ', '_');
+        for (ResourceLocation key : BuiltInRegistries.BLOCK.keySet()) {
+            String id = key.toString();
+            if (key.getPath().equals(needle)) {
+                endsWith.add(id);
+            } else if (id.contains(needle)) {
+                contains.add(id);
+            }
+        }
+        List<String> hits = !endsWith.isEmpty() ? endsWith : contains;
+        if (hits.isEmpty()) {
+            return new BlockResult(null, null, null,
+                    "no block matches \"" + query + "\"", List.of());
+        }
+        if (hits.size() == 1) {
+            String id = hits.get(0);
+            return new BlockResult(BuiltInRegistries.BLOCK.get(ResourceLocation.parse(id)),
+                    id, query, null, List.of());
+        }
+        List<String> shown = hits.size() > MAX_SUGGESTIONS
+                ? new ArrayList<>(hits.subList(0, MAX_SUGGESTIONS)) : hits;
+        return new BlockResult(null, null, null,
+                "\"" + query + "\" matches " + hits.size()
+                        + " blocks - name one exactly", shown);
+    }
+
+    /** Block counterpart to {@link Result}. */
+    public static final class BlockResult {
+        public final net.minecraft.world.level.block.Block block;
+        public final String id;
+        public final String resolvedFrom;
+        public final String error;
+        public final List<String> candidates;
+
+        private BlockResult(net.minecraft.world.level.block.Block block, String id,
+                            String resolvedFrom, String error, List<String> candidates) {
+            this.block = block;
+            this.id = id;
+            this.resolvedFrom = resolvedFrom;
+            this.error = error;
+            this.candidates = candidates;
+        }
+
+        public boolean ok() {
+            return block != null;
+        }
+    }
 }
