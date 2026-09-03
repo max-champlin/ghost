@@ -544,14 +544,27 @@ public final class Bridge {
                 // believed.
                 BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
                 int r = a.has("radius") ? a.get("radius").getAsInt() : 16;
-                Item want = BuiltInRegistries.ITEM.get(
-                        ResourceLocation.parse(a.get("item").getAsString()));
-                res.addProperty("ok", true);
-                res.addProperty("item", a.get("item").getAsString());
-                res.addProperty("inNetwork", Storage.inNetworks(level, at, r, want));
-                res.addProperty("networks", Storage.networkCount(level, at, r));
-                res.addProperty("at", at.getX() + " " + at.getY() + " " + at.getZ());
-                res.addProperty("radius", r);
+                // An unrecognised id used to resolve to AIR and get counted,
+                // so "essence" answered 0 next to a farm feeding that network.
+                ItemLookup.Result found = ItemLookup.resolve(a.get("item").getAsString());
+                if (!found.ok()) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", found.error);
+                    if (!found.candidates.isEmpty()) {
+                        res.add("candidates", JsonParser.parseString(
+                                new Gson().toJson(found.candidates)));
+                    }
+                } else {
+                    res.addProperty("ok", true);
+                    res.addProperty("item", found.id);
+                    if (found.resolvedFrom != null) {
+                        res.addProperty("resolvedFrom", found.resolvedFrom);
+                    }
+                    res.addProperty("inNetwork", Storage.inNetworks(level, at, r, found.item));
+                    res.addProperty("networks", Storage.networkCount(level, at, r));
+                    res.addProperty("at", at.getX() + " " + at.getY() + " " + at.getZ());
+                    res.addProperty("radius", r);
+                }
             }
             case "craft" -> {
                 // The one verb that spends something. Everything else this
@@ -568,8 +581,20 @@ public final class Bridge {
                     BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
                     int r = a.has("radius") ? a.get("radius").getAsInt() : 16;
                     long amount = a.has("count") ? a.get("count").getAsLong() : 1L;
-                    Item want = BuiltInRegistries.ITEM.get(
-                            ResourceLocation.parse(a.get("item").getAsString()));
+                    ItemLookup.Result found = ItemLookup.resolve(a.get("item").getAsString());
+                    if (!found.ok()) {
+                        res.addProperty("ok", false);
+                        res.addProperty("error", found.error);
+                        if (!found.candidates.isEmpty()) {
+                            res.add("candidates", JsonParser.parseString(
+                                    new Gson().toJson(found.candidates)));
+                        }
+                        if (who != null) {
+                            Chat.reply(who, found.error);
+                        }
+                        break;
+                    }
+                    Item want = found.item;
                     // "check": true plans the craft and reports what it would
                     // need, taking nothing. The safe way to approach a big
                     // build - find out what is missing before anything is
