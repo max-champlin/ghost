@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ghost inbox",
+  "description": "The contract for ghost/inbox.json. Feed this to a local model as a response-format schema (Ollama `format`, llama.cpp JSON schema, vLLM guided_json) and the model cannot emit a malformed action. Emitting valid JSON is the one thing small models reliably struggle with, and it is the one thing a schema removes entirely.",
+  "type": "array",
+  "minItems": 1,
+  "maxItems": 256,
+  "items": { "$ref": "#/$defs/action" },
+
+  "$defs": {
+    "pos": {
+      "type": "array",
+      "description": "A block position, [x, y, z].",
+      "items": { "type": "integer" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+
+    "action": {
+      "type": "object",
+      "required": ["do"],
+      "properties": {
+        "do": {
+          "type": "string",
+          "enum": [
+            "say", "scan", "blockmap", "find", "read", "entities", "have",
+            "craft", "where", "goto", "post", "return",
+            "break", "place", "use", "command", "wait", "waitFor"
+          ]
+        },
+
+        "text":   { "type": "string", "description": "say: what to speak in chat." },
+        "from":   { "$ref": "#/$defs/pos", "description": "scan/blockmap: one corner." },
+        "to":     { "$ref": "#/$defs/pos", "description": "scan/blockmap: the other corner." },
+        "at":     { "$ref": "#/$defs/pos", "description": "Where the action happens." },
+        "radius": { "type": "integer", "minimum": 1, "maximum": 64 },
+
+        "block":  { "type": "string", "description": "find: substring of a block id." },
+        "item":   { "type": "string", "description": "have/craft: a full item id, e.g. minecraft:redstone." },
+        "count":  { "type": "integer", "minimum": 1, "description": "craft: how many." },
+        "match": {
+          "type": "array",
+          "description": "blockmap: substrings to bucket by, e.g. [\"ae2:\", \"mekanism:\"].",
+          "items": { "type": "string" }
+        },
+        "nbt": {
+          "type": "boolean",
+          "description": "blockmap: also read each block entity's configuration (filters, per-face routing)."
+        },
+
+        "check": {
+          "type": "boolean",
+          "description": "craft: plan it and report what is missing, taking nothing. Use this before any large build."
+        },
+        "go": {
+          "type": "boolean",
+          "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+        },
+        "warp":  { "type": "boolean", "description": "goto: teleport rather than walk." },
+        "cmd":   { "type": "string", "description": "command: a server command. Output goes to logs/latest.log, NOT the outbox." },
+        "ticks": { "type": "integer", "minimum": 1, "description": "wait: how long." },
+        "as":    { "type": "string", "description": "Player name to act on behalf of, for the rank check." },
+        "dim":   { "type": "string", "description": "Dimension id, when not the overworld." }
+      },
+
+      "allOf": [
+        {
+          "if":   { "properties": { "do": { "const": "say" } } },
+          "then": { "required": ["text"] }
+        },
+        {
+          "if":   { "properties": { "do": { "enum": ["scan", "blockmap"] } } },
+          "then": { "required": ["from", "to"] }
+        },
+        {
+          "if":   { "properties": { "do": { "const": "blockmap" } } },
+          "then": { "required": ["match"] }
+        },
+        {
+          "if":   { "properties": { "do": { "const": "find" } } },
+          "then": { "required": ["block"] }
+        },
+        {
+          "if":   { "properties": { "do": { "enum": ["have", "craft"] } } },
+          "then": { "required": ["item"] }
+        },
+        {
+          "if":   { "properties": { "do": { "enum": ["read", "break", "place", "use"] } } },
+          "then": { "required": ["at"] }
+        },
+        {
+          "if":   { "properties": { "do": { "const": "command" } } },
+          "then": { "required": ["cmd"] }
+        },
+        {
+          "if":   { "properties": { "do": { "const": "wait" } } },
+          "then": { "required": ["ticks"] }
+        }
+      ]
+    }
+  }
+}

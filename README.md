@@ -141,6 +141,70 @@ A JSON file contract. No sockets, no API keys, no vendor:
 access to the game types `/ghost bridge on`. A mod that let an external process
 act on a world the moment it launched would be a hole in the wall.
 
+## Running it on a local model
+
+Ghost is unusually small-model friendly, and that is a property of the contract
+rather than luck. The agent is handed one situation at a time and answers with
+one list of actions - it is not holding a long tool-calling conversation, so the
+context never grows the way an agent loop's does.
+
+Measured on a live 615-mod instance:
+
+| what the model holds | tokens |
+|---|---|
+| the operating briefing (system prompt) | ~1,600 |
+| an incoming question from chat | ~50 |
+| a typical result to interpret | 150-650 |
+| the JSON action it writes back | ~50 |
+| **a normal turn, end to end** | **~2,500-3,000** |
+
+So a **4k context window is enough** for ordinary work: answering questions,
+running scans, reporting what is in a container, crafting. The exception is a
+`blockmap` with `nbt` over a whole base, which can reach 25k tokens - either
+give that one a large-context model or filter the JSON before it reaches the
+prompt.
+
+### The part that actually decides whether a small model works
+
+Not reasoning - **valid JSON**. A 3B model that understands the request
+perfectly will still hand you a trailing comma. That is a solved problem: every
+serious local runtime can constrain output to a schema, and one ships with this
+mod at [`docs/actions.schema.json`](docs/actions.schema.json).
+
+```bash
+# Ollama
+curl localhost:11434/api/chat -d '{"model":"qwen2.5:7b","format":<schema>,...}'
+
+# llama.cpp server
+./llama-server -m model.gguf --json-schema-file docs/actions.schema.json
+```
+
+With the schema enforced, malformed actions stop being a failure mode entirely
+and model size becomes a question of judgement rather than syntax.
+
+### Rough tiers
+
+These are reasoned from what each step demands, not benchmarked - treat them as
+a starting point and expect your own mileage to differ:
+
+- **1-3B** - can drive templated single actions (`say`, a scan at given
+  coordinates) with the schema enforced. Will not choose sensibly between
+  eighteen verbs or interpret a block census. Usable as a command parser, not as
+  an assistant.
+- **7-8B** (Llama 3.1 8B, Qwen2.5 7B, Mistral 7B) - the realistic floor for
+  useful autonomous work. Picks the right verb, reads a result, answers in
+  chat. This is where most home labs should start.
+- **14B** (Qwen2.5 14B, Phi-4) - comfortable. Handles multi-step work: find a
+  thing, read it, act on what it said.
+- **32B+** - good. Worth it if you want it reasoning about *modded* systems
+  rather than reporting them.
+
+**What size does not fix:** a local model will not know what a storage bus or
+Insanium farmland is. It can still report exact counts and positions and let you
+draw the conclusion - which is most of the value - but do not expect a 7B to
+explain your AE2 subnet to you. Domain knowledge is a training-data question,
+not a parameter-count one.
+
 ## Requirements
 
 - Minecraft 1.21.1, NeoForge
