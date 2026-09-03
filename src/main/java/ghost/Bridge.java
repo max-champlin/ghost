@@ -592,6 +592,27 @@ public final class Bridge {
                     res.addProperty("check", checkOnly);
                 }
             }
+            case "blockmap" -> {
+                // One pass, many systems. Drawing a base diagram needs every
+                // network's blocks AND their positions; running "find" once per
+                // mod means walking the same million blocks a dozen times.
+                BlockPos a1 = pos(a, "from");
+                BlockPos b1 = pos(a, "to");
+                java.util.List<String> matches = new java.util.ArrayList<>();
+                if (a.has("match")) {
+                    for (JsonElement e : a.getAsJsonArray("match")) {
+                        matches.add(e.getAsString());
+                    }
+                }
+                if (matches.isEmpty()) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "no match list given");
+                } else {
+                    res.add("map", JsonParser.parseString(new Gson().toJson(
+                            BlockMap.of(level, a1, b1, matches))));
+                    res.addProperty("ok", true);
+                }
+            }
             case "find" -> {
                 BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
                 int r = a.has("radius") ? a.get("radius").getAsInt() : 32;
