@@ -348,7 +348,31 @@ public final class Bridge {
         return true;                          // nothing asked for: already met
     }
 
+    /**
+     * Coordinates, or the name of a remembered place.
+     *
+     * <p>{@code "at": [12196, 174, 1510]} and {@code "at": "garden"} both work,
+     * so an instruction can be written the way it would be spoken. A name that
+     * covers a box resolves to the corner appropriate to the key: {@code from}
+     * and {@code to} take the box's corners, anything else takes its point.
+     */
     private static BlockPos pos(JsonObject a, String key) {
+        JsonElement e = a.get(key);
+        if (e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()) {
+            String name = e.getAsString();
+            Places.Place place = Places.get(name);
+            if (place == null) {
+                throw new IllegalArgumentException("no place called \"" + name
+                        + "\" - known: " + String.join(", ", Places.suggest(name)));
+            }
+            if ("from".equals(key)) {
+                return place.cornerFrom();
+            }
+            if ("to".equals(key)) {
+                return place.cornerTo();
+            }
+            return place.point();
+        }
         JsonArray p = a.getAsJsonArray(key);
         return new BlockPos(p.get(0).getAsInt(), p.get(1).getAsInt(), p.get(2).getAsInt());
     }
@@ -494,6 +518,52 @@ public final class Bridge {
                         res.addProperty("error", "no path from here");
                     }
                 }
+            }
+            case "remember" -> {
+                // Naming a place once turns every later instruction into the
+                // sentence it always was. With no "at", it names wherever
+                // Shelby is standing - which is how a person would do it:
+                // walk there, say "this is the garden".
+                String name = a.get("name").getAsString();
+                Places.Place place = new Places.Place();
+                BlockPos point;
+                if (a.has("at")) {
+                    point = pos(a, "at");
+                } else {
+                    ghost.body.Body body = ghost.body.Bodies.find(server);
+                    point = body != null ? body.blockPosition() : anchor(server, level);
+                }
+                place.pos = new int[]{point.getX(), point.getY(), point.getZ()};
+                place.dim = level.dimension().location().toString();
+                if (a.has("from") && a.has("to")) {
+                    BlockPos f = pos(a, "from");
+                    BlockPos t = pos(a, "to");
+                    place.from = new int[]{f.getX(), f.getY(), f.getZ()};
+                    place.to = new int[]{t.getX(), t.getY(), t.getZ()};
+                }
+                if (a.has("note")) {
+                    place.note = a.get("note").getAsString();
+                }
+                Places.remember(name, place);
+                res.addProperty("ok", true);
+                res.addProperty("remembered", name);
+                res.addProperty("at", point.getX() + " " + point.getY() + " " + point.getZ());
+                res.addProperty("hasArea", place.hasBox());
+            }
+            case "forget" -> {
+                String name = a.get("name").getAsString();
+                boolean had = Places.forget(name);
+                res.addProperty("ok", had);
+                if (!had) {
+                    res.addProperty("error", "no place called \"" + name + "\"");
+                    res.add("known", JsonParser.parseString(
+                            new Gson().toJson(Places.suggest(name))));
+                }
+            }
+            case "places" -> {
+                res.add("places", JsonParser.parseString(new Gson().toJson(Places.all())));
+                res.addProperty("count", Places.all().size());
+                res.addProperty("ok", true);
             }
             case "where" -> {
                 // Where is she standing right now - so a report can say so.
