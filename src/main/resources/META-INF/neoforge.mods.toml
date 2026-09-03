@@ -4,7 +4,7 @@ license = "MIT"
 
 [[mods]]
 modId = "ghost"
-version = "1.0.0"
+version = "1.1.0"
 displayName = "Ghost"
 description = '''
 A ghost in your world: something with eyes and hands that is never actually
