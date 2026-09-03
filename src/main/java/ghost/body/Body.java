@@ -326,12 +326,24 @@ public class Body extends PathfinderMob {
         if (followId != null) {
             tag.putUUID("Follow", followId);
         }
+        // A posting is an instruction that outlives the session that gave it.
+        // Without this, "stay by the bed" survived exactly until the next
+        // restart and then she quietly went back to following - which looks
+        // like the order was ignored rather than forgotten.
+        if (post != null) {
+            tag.putInt("PostX", post.getX());
+            tag.putInt("PostY", post.getY());
+            tag.putInt("PostZ", post.getZ());
+        }
     }
 
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         followId = tag.hasUUID("Follow") ? tag.getUUID("Follow") : null;
+        post = tag.contains("PostX")
+                ? new BlockPos(tag.getInt("PostX"), tag.getInt("PostY"), tag.getInt("PostZ"))
+                : null;
     }
 
     // --- keeping up -------------------------------------------------------
