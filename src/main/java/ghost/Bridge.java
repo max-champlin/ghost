@@ -608,8 +608,9 @@ public final class Bridge {
                     res.addProperty("ok", false);
                     res.addProperty("error", "no match list given");
                 } else {
+                    boolean withNbt = a.has("nbt") && a.get("nbt").getAsBoolean();
                     res.add("map", JsonParser.parseString(new Gson().toJson(
-                            BlockMap.of(level, a1, b1, matches))));
+                            BlockMap.of(level, a1, b1, matches, withNbt))));
                     res.addProperty("ok", true);
                 }
             }

@@ -2,7 +2,9 @@ package ghost;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
@@ -48,6 +50,21 @@ public final class BlockMap {
     private static final long MAX_BLOCKS = 8_000_000L;
 
     /**
+     * Characters of NBT kept per block entity.
+     *
+     * <p>Configuration - a pipe's filter, a conduit's per-face setting, an
+     * XNet channel - is small. Contents are not: a drive full of cells or a
+     * barrel of items runs to hundreds of kilobytes and says nothing about how
+     * the base is wired. Cutting here keeps the interesting part and discards
+     * the inventory, and {@code nbtTruncated} marks anything that was cut so a
+     * clipped filter is never mistaken for a short one.
+     */
+    private static final int MAX_NBT_CHARS = 4000;
+
+    /** Block entities to read NBT from in one pass. */
+    private static final int MAX_NBT_ENTRIES = 400;
+
+    /**
      * Walk the box once, keeping every block whose id contains any of
      * {@code matches}.
      *
@@ -55,7 +72,7 @@ public final class BlockMap {
      *                well, as do fragments like {@code "conduit"}
      */
     public static Map<String, Object> of(ServerLevel level, BlockPos from, BlockPos to,
-                                         List<String> matches) {
+                                         List<String> matches, boolean withNbt) {
         int x0 = Math.min(from.getX(), to.getX());
         int y0 = Math.min(from.getY(), to.getY());
         int z0 = Math.min(from.getZ(), to.getZ());
@@ -82,6 +99,10 @@ public final class BlockMap {
         Map<String, List<List<Integer>>> positions = new TreeMap<>();
         Map<String, Integer> perMatch = new TreeMap<>();
         boolean truncated = false;
+        // Configuration, keyed by "x,y,z" so a diagram can join it to a position.
+        Map<String, Object> config = new LinkedHashMap<>();
+        boolean nbtTruncated = false;
+        boolean nbtCapped = false;
 
         BlockPos.MutableBlockPos cur = new BlockPos.MutableBlockPos();
         for (int x = x0; x <= x1; x++) {
@@ -113,6 +134,33 @@ public final class BlockMap {
                     } else {
                         truncated = true;
                     }
+
+                    if (!withNbt) {
+                        continue;
+                    }
+                    if (config.size() >= MAX_NBT_ENTRIES) {
+                        nbtCapped = true;
+                        continue;
+                    }
+                    BlockEntity be = level.getBlockEntity(cur);
+                    if (be == null) {
+                        continue;               // plain block, nothing to configure
+                    }
+                    String snbt;
+                    try {
+                        CompoundTag tag = be.saveWithFullMetadata(level.registryAccess());
+                        snbt = tag.toString();
+                    } catch (Exception e) {
+                        continue;               // a block entity that will not save is not a map problem
+                    }
+                    if (snbt.length() > MAX_NBT_CHARS) {
+                        snbt = snbt.substring(0, MAX_NBT_CHARS);
+                        nbtTruncated = true;
+                    }
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    entry.put("id", id);
+                    entry.put("nbt", snbt);
+                    config.put(x + "," + y + "," + z, entry);
                 }
             }
         }
@@ -125,6 +173,12 @@ public final class BlockMap {
         out.put("positions", positions);
         out.put("maxPositionsPerId", MAX_POSITIONS_PER_ID);
         out.put("positionsTruncated", truncated);
+        if (withNbt) {
+            out.put("config", config);
+            out.put("configEntries", config.size());
+            out.put("nbtTruncated", nbtTruncated);
+            out.put("nbtEntryCapReached", nbtCapped);
+        }
         return out;
     }
 }
