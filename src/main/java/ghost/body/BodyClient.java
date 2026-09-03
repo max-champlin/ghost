@@ -71,6 +71,30 @@ public final class BodyClient {
             return RenderType.entityTranslucent(getTextureLocation(entity));
         }
 
+        /**
+         * Make the crouch actually show.
+         *
+         * <p>Setting {@code Pose.CROUCHING} server-side makes
+         * {@code isCrouching()} true, and that is where it stops:
+         * {@code HumanoidModel.crouching} is the field that bends the model, and
+         * <b>nothing in the vanilla renderer ever assigns it from the entity</b>.
+         * {@code LivingEntityRenderer} sets {@code model.riding} for passengers
+         * and the only other assignment in the client is one model copying
+         * another. A player crouches because the player renderer sets the flag
+         * itself; a {@link net.minecraft.client.renderer.entity.MobRenderer}
+         * wearing a {@link PlayerModel} has nobody to do that for it.
+         *
+         * <p>So the pose was correct all along and the body simply stood there.
+         */
+        @Override
+        public void render(Body entity, float entityYaw, float partialTicks,
+                           com.mojang.blaze3d.vertex.PoseStack poseStack,
+                           net.minecraft.client.renderer.MultiBufferSource buffer,
+                           int packedLight) {
+            getModel().crouching = entity.isCrouching();
+            super.render(entity, entityYaw, partialTicks, poseStack, buffer, packedLight);
+        }
+
         @Override
         protected boolean shouldShowName(Body entity) {
             return entity.hasCustomName();

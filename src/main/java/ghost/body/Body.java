@@ -264,15 +264,18 @@ public class Body extends PathfinderMob {
      * rather than resting, which would say the wrong thing entirely.
      */
     private void showState() {
-        boolean armed = ghost.Bridge.armed();
-        boolean settled = !armed && getNavigation().isDone();
+        boolean busy = ghost.Bridge.busy() || ghost.Storage.craftPending();
+        // Settled means genuinely idle: nothing in flight, nowhere being walked
+        // to, and no posting to stand at. It used to mean only "the bridge is
+        // disarmed", which was a status light nobody asked for - with the bridge
+        // open she never sat down at all, which is every normal session.
+        boolean settled = !busy && post == null && getNavigation().isDone();
         Pose wanted = settled ? Pose.CROUCHING : Pose.STANDING;
         if (getPose() != wanted) {
             setPose(wanted);
         }
 
-        if (armed && (ghost.Bridge.busy() || ghost.Storage.craftPending())
-                && tickCount % WORKING_PARTICLE_INTERVAL == 0
+        if (busy && tickCount % WORKING_PARTICLE_INTERVAL == 0
                 && level() instanceof ServerLevel server) {
             server.sendParticles(ParticleTypes.ENCHANT,
                     getX(), getY() + 1.9, getZ(), 4, 0.25, 0.15, 0.25, 0.0);
