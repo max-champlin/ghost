@@ -40,20 +40,28 @@ This is the part that does not exist elsewhere. Ghost talks to AE2 through AE2's
 own supported API, not by pretending to be a player at a terminal.
 
 **Reading a network** — `Ae2.java`. Networks are found through AE2's
-`ME_STORAGE` block capability, so anything a cable reaches is a valid door in:
-terminal, interface, drive, controller. Results are deduplicated *by storage
-object* rather than by position, because one network answers through every block
-attached to it — otherwise a room full of terminals reports the same 4,000 certus
+`IN_WORLD_GRID_NODE_HOST` capability, which **every** grid-connected block
+exposes — drive, controller, cable, terminal, interface — and that leads to the
+`IGrid`, whose `IStorageService` owns the real inventory. Results are
+deduplicated by the grid itself, because one network answers through every block
+attached to it; otherwise a room full of terminals reports the same 4,000 certus
 quartz a dozen times over.
 
 ```java
-MEStorage storage = level.getCapability(AECapabilities.ME_STORAGE, pos, dir);
-for (var entry : storage.getAvailableStacks()) {
-    if (entry.getKey() instanceof AEItemKey key && key.getItem() == want) {
-        total += entry.getLongValue();
-    }
-}
+IInWorldGridNodeHost host = level.getCapability(
+        AECapabilities.IN_WORLD_GRID_NODE_HOST, pos, null);
+IGridNode node = host.getGridNode(face);
+MEStorage inv = node.getGrid().getService(IStorageService.class).getInventory();
+long held = inv.getAvailableStacks().get(AEItemKey.of(want));
 ```
+
+> **A wrong turn worth documenting.** This first used the `ME_STORAGE` block
+> capability, which reads like the obvious way in and is exposed by only a
+> handful of blocks — **a drive is not one of them, and neither is a
+> controller**. Standing directly on a drive beside an online controller, it
+> reported *zero networks*, indistinguishable from a network holding none of
+> what you asked about. If you are writing AE2 integration, go through the grid
+> node, not the storage capability.
 
 **Crafting** — `Ae2Craft.java`. A real autocrafting job on a real network:
 
