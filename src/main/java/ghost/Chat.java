@@ -31,13 +31,24 @@ public final class Chat {
     private Chat() {
     }
 
-    /** Anything starting with these is treated as addressed to Shelby. */
-    private static final String[] TRIGGERS = {
-            "hey shelby", "shelby,", "shelby ", "@shelby", "hi shelby", "ok shelby",
-            // Kept so a player who knows what is behind the curtain can still
-            // get its attention.
-            "hey claude", "@claude",
-    };
+    /**
+     * Names she answers to, matched ANYWHERE in a line.
+     *
+     * <p>This used to require the name to lead the sentence, which meant
+     * "Shelby, check the farm" worked and "can you check the farm, Shelby"
+     * was silently ignored - and silence is indistinguishable from not
+     * listening. People put a name where it falls naturally, so the matcher
+     * follows the speech rather than the other way round.
+     *
+     * <p>Matched on word boundaries, so a name inside a longer word does not
+     * count. On a busy server this will also catch players talking ABOUT her
+     * rather than TO her; that is the accepted cost of being addressable the way
+     * a person is, and the ack makes a false positive obvious rather than silent.
+     */
+    private static final String[] NAMES = {"shelby", "claude"};
+
+    private static final java.util.regex.Pattern ADDRESSED =
+            java.util.regex.Pattern.compile("(?i)(?:^|[^a-z0-9_])@?(shelby|claude)(?![a-z0-9_])");
 
     private static int pending = 0;
 
@@ -76,15 +87,7 @@ public final class Chat {
         o.addProperty("rank", Perms.rank(player));
         append("chat.jsonl", o);
 
-        String low = text.toLowerCase(Locale.ROOT).trim();
-        boolean addressed = false;
-        for (String t : TRIGGERS) {
-            if (low.startsWith(t)) {
-                addressed = true;
-                break;
-            }
-        }
-        if (!addressed) {
+        if (!ADDRESSED.matcher(text).find()) {
             return false;
         }
         pending++;
@@ -154,14 +157,23 @@ public final class Chat {
                 : "stepping across - " + Math.round(away) + " blocks out";
     }
 
-    /** Drop the "Hey Shelby," lead-in so the echo is the actual request. */
+    /**
+     * Drop the name so the echo is the actual request.
+     *
+     * <p>Only where the name is being USED to address her - the front of the
+     * line ("Shelby, check the farm") or the end ("check the farm, Shelby").
+     * A name in the middle is usually part of the sentence's meaning, and
+     * cutting it there turns "tell Shelby the farm is done" into something
+     * that reads like a different instruction. Better a slightly long echo
+     * than a quietly altered one.
+     */
     private static String strip(String text) {
         String s = text.trim();
-        for (String t : TRIGGERS) {
-            if (s.toLowerCase(Locale.ROOT).startsWith(t)) {
-                s = s.substring(t.length());
-                break;
-            }
+        for (String n : NAMES) {
+            // Leading: "hey shelby," / "ok shelby" / "@shelby"
+            s = s.replaceFirst("(?i)^(?:hey|hi|ok|okay|yo)?\\s*@?" + n + "\\b[,:\\s]*", "");
+            // Trailing: "..., shelby" / "... shelby?"
+            s = s.replaceFirst("(?i)[,\\s]+@?" + n + "\\b\\s*([?!.]*)$", "$1");
         }
         return s.replaceFirst("^[,\\s]+", "").trim();
     }
