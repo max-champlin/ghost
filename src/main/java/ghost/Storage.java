@@ -84,6 +84,24 @@ public final class Storage {
         }
     }
 
+    /**
+     * Which storage cell holds an item. Empty result without AE2.
+     *
+     * @param want the item to look for, or null to list what every cell holds
+     */
+    public static java.util.Map<String, Object> cells(ServerLevel level, BlockPos centre,
+                                                      int radius, Item want) {
+        if (!ae2Loaded()) {
+            return java.util.Map.of("error", "AE2 is not installed");
+        }
+        try {
+            return Ae2Cells.find(level, centre, radius, want);
+        } catch (Throwable t) {
+            Ghost.LOG.error("AE2 cell scan failed", t);
+            return java.util.Map.of("error", "the cell scan failed");
+        }
+    }
+
     /** Whether a crafting calculation is outstanding. False without AE2. */
     public static boolean craftPending() {
         if (!ae2Loaded()) {

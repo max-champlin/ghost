@@ -660,6 +660,33 @@ public final class Bridge {
                     res.addProperty("radius", r);
                 }
             }
+            case "cells" -> {
+                // "Which cell has the blaze seeds" is a question players ask,
+                // and dumping a drive's NBT cannot answer it - one unpartitioned
+                // junk cell fills the whole budget before reaching cell two.
+                // AE2 hands back each cell as a real inventory, so they are read
+                // one at a time instead.
+                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
+                int r = a.has("radius") ? a.get("radius").getAsInt() : 8;
+                Item want = null;
+                if (a.has("item")) {
+                    ItemLookup.Result found = ItemLookup.resolve(a.get("item").getAsString());
+                    if (!found.ok()) {
+                        res.addProperty("ok", false);
+                        res.addProperty("error", found.error);
+                        if (!found.candidates.isEmpty()) {
+                            res.add("candidates", JsonParser.parseString(
+                                    new Gson().toJson(found.candidates)));
+                        }
+                        break;
+                    }
+                    want = found.item;
+                    res.addProperty("item", found.id);
+                }
+                res.add("cells", JsonParser.parseString(new Gson().toJson(
+                        Storage.cells(level, at, r, want))));
+                res.addProperty("ok", true);
+            }
             case "craft" -> {
                 // The one verb that spends something. Everything else this
                 // bridge does is either reversible or free; an autocrafting job
