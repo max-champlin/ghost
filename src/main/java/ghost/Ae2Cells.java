@@ -1,5 +1,7 @@
 package ghost;
 
+import appeng.api.config.Actionable;
+import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.stacks.AEKey;
 import appeng.api.storage.StorageCells;
@@ -100,9 +102,22 @@ final class Ae2Cells {
                     // a cell that will not state its status is still readable
                 }
                 try {
-                    var stacks = cell.getAvailableStacks();
                     if (wanted != null) {
-                        long held = stacks.get(wanted);
+                        // A targeted lookup, not an enumeration.
+                        //
+                        // getAvailableStacks() allocates a KeyCounter and walks
+                        // the WHOLE cell, and asking it for one key afterwards
+                        // throws all that work away - on a full unpartitioned
+                        // cell that is thousands of entries read to answer a
+                        // question about one. A simulated extract asks the cell
+                        // directly about the single key instead.
+                        //
+                        // Simulation never moves anything. The one nuance worth
+                        // knowing: this reports what could be TAKEN, which for a
+                        // normal cell is what it HOLDS, but a cell restricted
+                        // from extraction could report less than it stores.
+                        long held = cell.extract(wanted, Long.MAX_VALUE,
+                                Actionable.SIMULATE, IActionSource.empty());
                         entry.put("held", held);
                         hostTotal += held;
                         grandTotal += held;
@@ -112,6 +127,8 @@ final class Ae2Cells {
                             continue;
                         }
                     } else {
+                        // No item named, so the enumeration IS the answer.
+                        var stacks = cell.getAvailableStacks();
                         int distinct = 0;
                         long items = 0;
                         for (var e : stacks) {
