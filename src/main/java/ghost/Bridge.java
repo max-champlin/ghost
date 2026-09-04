@@ -90,9 +90,6 @@ public final class Bridge {
     private static JsonObject pendingGo;
     private static long goDeadline;
 
-    /** Set when a batch parks her somewhere on purpose, so she is not recalled. */
-    private static boolean stationed = false;
-
     /** How close counts as "there". */
     private static final double ARRIVED_WITHIN = 3.5;
 
@@ -617,8 +614,7 @@ public final class Bridge {
                     res.addProperty("ok", false);
                     res.addProperty("error", "no body to station");
                 } else {
-                    body.postTo(site);
-                    stationed = true;
+                    body.postTo(site, true);   // stationed until released
                     res.addProperty("ok", true);
                     res.addProperty("posted", site.getX() + " " + site.getY() + " " + site.getZ());
                 }
@@ -628,7 +624,6 @@ public final class Bridge {
                 if (body != null) {
                     body.clearPost();
                 }
-                stationed = false;
                 res.addProperty("ok", true);
                 res.addProperty("returning", true);
             }
@@ -777,11 +772,9 @@ public final class Bridge {
         // The errand is over: come back. A body that stays where the last
         // action happened would drift across the base one job at a time and
         // never be where you are, which is the opposite of having one.
-        if (!stationed) {
-            ghost.body.Body body = ghost.body.Bodies.find(server);
-            if (body != null) {
-                body.clearPost();
-            }
+        ghost.body.Body body = ghost.body.Bodies.find(server);
+        if (body != null && !body.stationed()) {
+            body.clearPost();
         }
 
         JsonObject out = new JsonObject();

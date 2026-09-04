@@ -106,6 +106,19 @@ public class Body extends PathfinderMob {
      */
     private BlockPos post;
 
+    /**
+     * True when the posting was a deliberate stationing rather than a one-off
+     * errand.
+     *
+     * <p>This used to be a {@code static boolean} on the bridge, which is the
+     * wrong place for it twice over: it described the body but lived somewhere
+     * else, and being static it reset to false on every restart. So a stationing
+     * survived the save correctly and was then wiped by the first batch that ran
+     * afterwards, because the bridge had forgotten it was ever deliberate. State
+     * about the body belongs on the body.
+     */
+    private boolean postSticky;
+
     public Body(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
         setPersistenceRequired();
@@ -123,15 +136,32 @@ public class Body extends PathfinderMob {
 
     // --- being sent somewhere ---------------------------------------------
 
-    /** Send her to a job site. She will stay there until released. */
+    /** Send her somewhere for the duration of a batch. */
     public void postTo(BlockPos site) {
+        postTo(site, false);
+    }
+
+    /**
+     * Send her to a job site.
+     *
+     * @param sticky true to station her until explicitly released; false for an
+     *               errand that ends when the batch does
+     */
+    public void postTo(BlockPos site, boolean sticky) {
         this.post = site;
+        this.postSticky = sticky;
         this.unpathableTicks = 0;
+    }
+
+    /** True when she was stationed on purpose and must not be auto-recalled. */
+    public boolean stationed() {
+        return post != null && postSticky;
     }
 
     /** Release her; she goes back to keeping up with whoever she follows. */
     public void clearPost() {
         this.post = null;
+        this.postSticky = false;
     }
 
     public boolean posted() {
@@ -334,6 +364,7 @@ public class Body extends PathfinderMob {
             tag.putInt("PostX", post.getX());
             tag.putInt("PostY", post.getY());
             tag.putInt("PostZ", post.getZ());
+            tag.putBoolean("PostSticky", postSticky);
         }
     }
 
@@ -344,6 +375,7 @@ public class Body extends PathfinderMob {
         post = tag.contains("PostX")
                 ? new BlockPos(tag.getInt("PostX"), tag.getInt("PostY"), tag.getInt("PostZ"))
                 : null;
+        postSticky = tag.getBoolean("PostSticky");
     }
 
     // --- keeping up -------------------------------------------------------
