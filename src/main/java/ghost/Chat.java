@@ -50,14 +50,39 @@ public final class Chat {
     private static final java.util.regex.Pattern ADDRESSED =
             java.util.regex.Pattern.compile("(?i)(?:^|[^a-z0-9_])@?(shelby|claude)(?![a-z0-9_])");
 
-    private static int pending = 0;
+    /**
+     * Unanswered asks, counted per person.
+     *
+     * <p>This was one global int, which is fine for one player and wrong for a
+     * server: two people asking at once produced a single number that belonged
+     * to neither of them, and whoever got answered first cleared the other's
+     * count too, so their question stopped being reported as waiting while it
+     * was still waiting.
+     */
+    private static final java.util.Map<java.util.UUID, Integer> PENDING =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Everyone's unanswered asks. */
     public static int pending() {
-        return pending;
+        int total = 0;
+        for (int n : PENDING.values()) {
+            total += n;
+        }
+        return total;
+    }
+
+    /** Just this person's. */
+    public static int pendingFor(java.util.UUID who) {
+        return PENDING.getOrDefault(who, 0);
     }
 
     public static void clearPending() {
-        pending = 0;
+        PENDING.clear();
+    }
+
+    /** Answered one person without answering the room. */
+    public static void clearPending(java.util.UUID who) {
+        PENDING.remove(who);
     }
 
     private static void append(String file, JsonObject o) {
@@ -85,12 +110,15 @@ public final class Chat {
         // person is allowed to ask for before it starts planning something it
         // will only be refused at the last step.
         o.addProperty("rank", Perms.rank(player));
+        // Who asked, in a form that survives a name change - a reply has to be
+        // addressable back to a person, not to a display name.
+        o.addProperty("uuid", player.getUUID().toString());
         append("chat.jsonl", o);
 
         if (!ADDRESSED.matcher(text).find()) {
             return false;
         }
-        pending++;
+        PENDING.merge(player.getUUID(), 1, Integer::sum);
         append("asks.jsonl", o);
         reply(player, ack(player, text));
         return true;
@@ -120,8 +148,10 @@ public final class Chat {
         }
         sb.append("very good - \"").append(asked).append("\"");
         sb.append("  |  ").append(approach(player));
-        if (pending > 1) {
-            sb.append("  |  ").append(pending).append(" others waiting");
+        int others = pending() - pendingFor(player.getUUID());
+        if (others > 0) {
+            sb.append("  |  ").append(others)
+                    .append(others == 1 ? " other waiting" : " others waiting");
         }
         return sb.toString();
     }

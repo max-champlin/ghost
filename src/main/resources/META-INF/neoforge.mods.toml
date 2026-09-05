@@ -32,13 +32,20 @@ server side.
 [[dependencies.ghost]]
     modId = "neoforge"
     type = "required"
-    versionRange = "[21.1,)"
+    # Pinned, not open-ended. NeoForge 21.2+ targets MC 1.21.2+, where the APIs
+    # this mod uses moved: ItemInteractionResult was folded back into
+    # InteractionResult, and DimensionTransition was renamed. An open range does
+    # not make those work - it just lets the loader accept the jar and fail at
+    # runtime instead of refusing it cleanly at load, which turns "unsupported
+    # version" into a confusing bug report.
+    versionRange = "[21.1,21.2)"
     ordering = "NONE"
     side = "BOTH"
 
 [[dependencies.ghost]]
     modId = "minecraft"
     type = "required"
-    versionRange = "[1.21.1,1.22)"
+    # Only what has actually been tested. See the note above.
+    versionRange = "[1.21.1,1.21.2)"
     ordering = "NONE"
     side = "BOTH"

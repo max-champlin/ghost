@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Ghost inbox",
-  "description": "The contract for ghost/inbox.json. Feed this to a local model as a response-format schema (Ollama `format`, llama.cpp JSON schema, vLLM guided_json) and the model cannot emit a malformed action. Emitting valid JSON is the one thing small models reliably struggle with, and it is the one thing a schema removes entirely.",
+  "description": "The contract for a Ghost request file (ghost/in/<id>.json). Feed this to a local model as a response-format schema (Ollama `format`, llama.cpp JSON schema, vLLM guided_json) and the model cannot emit a malformed action. Emitting valid JSON is the one thing small models reliably struggle with, and it is the one thing a schema removes entirely.",
   "type": "array",
   "minItems": 1,
   "maxItems": 256,
@@ -25,7 +25,9 @@
           "enum": [
             "say", "scan", "blockmap", "find", "read", "entities", "have",
             "craft", "where", "goto", "post", "return",
-            "break", "place", "use", "command", "wait", "waitFor"
+            "break", "place", "use", "command", "wait", "waitFor",
+            "remember", "forget", "places", "cells",
+            "slots", "bag", "worn", "take", "put", "fill", "clear"
           ]
         },
 

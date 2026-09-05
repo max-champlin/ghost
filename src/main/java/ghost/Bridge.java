@@ -101,6 +101,12 @@ public final class Bridge {
     private static int waitTicks = 0;
     private static int batches = 0;
 
+    /**
+     * Which request the batch in flight belongs to, so its answer can be
+     * addressed back rather than dropped in a shared pigeonhole.
+     */
+    private static String currentId = null;
+
     private Bridge() {
     }
 
@@ -138,6 +144,33 @@ public final class Bridge {
 
     private static Path outbox() {
         return Sampler.dir().resolve("outbox.json");
+    }
+
+    /**
+     * The request queue: one file per request, so two writers cannot collide.
+     *
+     * <p>{@code inbox.json} is a single slot. Two callers writing it at the
+     * same time means one request is silently destroyed before anything reads
+     * it, and the survivor's answer lands in a shared {@code outbox.json} with
+     * nothing to say whose it is. That is not a hypothetical - it happened
+     * twice in one afternoon with two sessions running, and it is the same
+     * failure a server hits when two players ask Shelby for something at once.
+     *
+     * <p>A caller now drops {@code ghost/in/&lt;whatever&gt;.json}. The name is
+     * the request id, files are taken oldest-first, and the answer comes back
+     * at {@code ghost/out/&lt;id&gt;.json}. Nothing overwrites anything.
+     */
+    private static Path inDir() {
+        return Sampler.dir().resolve("in");
+    }
+
+    private static Path outDir() {
+        return Sampler.dir().resolve("out");
+    }
+
+    /** Every completed batch, appended, so no answer is ever overwritten. */
+    private static Path outLog() {
+        return Sampler.dir().resolve("outbox.jsonl");
     }
 
     public static void tick(MinecraftServer server) {
@@ -219,11 +252,44 @@ public final class Bridge {
         }
     }
 
+    /**
+     * The next request to run, or null.
+     *
+     * <p>Prefers the {@code in/} queue and falls back to the old single-slot
+     * {@code inbox.json}, so anything already driving the bridge keeps working
+     * while callers move over.
+     */
+    private static Path nextRequest() {
+        Path dir = inDir();
+        if (Files.isDirectory(dir)) {
+            try (java.util.stream.Stream<Path> files = Files.list(dir)) {
+                Path oldest = files
+                        .filter(f -> f.getFileName().toString().endsWith(".json"))
+                        .min(java.util.Comparator.comparing(f -> f.getFileName().toString()))
+                        .orElse(null);
+                if (oldest != null) {
+                    return oldest;
+                }
+            } catch (IOException e) {
+                Ghost.LOG.error("could not list {}", dir, e);
+            }
+        }
+        Path legacy = inbox();
+        return Files.exists(legacy) ? legacy : null;
+    }
+
     private static void pickUpInbox() {
-        Path in = inbox();
-        if (!Files.exists(in)) {
+        Path in = nextRequest();
+        if (in == null) {
             return;
         }
+        // The file name is the request id; the legacy single slot has none of
+        // its own, so it gets a serial one rather than sharing a name with the
+        // next caller's batch.
+        String name = in.getFileName().toString();
+        currentId = name.equals("inbox.json")
+                ? "legacy-" + (batches + 1)
+                : name.substring(0, name.length() - 5);
         try {
             // Consume before running: a batch must never be able to replay
             // itself on the next load because the file was still sitting there.
@@ -232,9 +298,18 @@ public final class Bridge {
             Files.move(in, taken);
             try (Reader r = Files.newBufferedReader(taken, StandardCharsets.UTF_8)) {
                 JsonElement root = JsonParser.parseReader(r);
-                JsonArray arr = root.isJsonArray()
-                        ? root.getAsJsonArray()
-                        : root.getAsJsonObject().getAsJsonArray("actions");
+                JsonArray arr;
+                if (root.isJsonArray()) {
+                    arr = root.getAsJsonArray();
+                } else {
+                    JsonObject obj = root.getAsJsonObject();
+                    // An id the caller chose itself beats the file name, so a
+                    // requester can pick something it will recognise later.
+                    if (obj.has("id")) {
+                        currentId = obj.get("id").getAsString();
+                    }
+                    arr = obj.getAsJsonArray("actions");
+                }
                 if (arr.size() > MAX_ACTIONS) {
                     Ghost.LOG.error("bridge batch of {} exceeds cap {}", arr.size(), MAX_ACTIONS);
                     writeError("batch of " + arr.size() + " exceeds cap " + MAX_ACTIONS);
@@ -475,10 +550,58 @@ public final class Bridge {
                 BlockHitResult hit = new BlockHitResult(
                         new Vec3(p.getX() + 0.5, p.getY() + 1.0, p.getZ() + 0.5),
                         face == null ? Direction.UP : face, p, false);
-                var out = stack.useOn(new UseOnContext(level, fake,
-                        InteractionHand.MAIN_HAND, stack, hit));
+                // Sneak, on request.
+                //
+                // Plenty of blocks put a SECOND action behind a crouched
+                // right-click - Max's own portal dialer cycles its destination
+                // that way, and a fake player never crouches, so that action was
+                // simply unreachable from here. Reset in the finally below,
+                // because FakePlayerFactory hands out a SHARED player: leaving
+                // it crouched would silently change the meaning of every later
+                // use in the batch.
+                boolean sneak = a.has("sneak") && a.get("sneak").getAsBoolean();
+                fake.setShiftKeyDown(sneak);
+
+                // Vanilla's own order, which this skipped entirely.
+                //
+                // ItemStack.useOn runs the ITEM's behaviour on the block. An
+                // empty hand has no item, so it returned PASS without ever
+                // consulting the block - meaning "use with no item" could never
+                // press a button, pull a lever, or open anything. It was a
+                // guaranteed no-op that reported itself as a clean PASS, which
+                // reads like the block declined rather than like nobody asked.
+                //
+                // ServerPlayerGameMode asks the block first and only then the
+                // item, so that is what happens here.
+                net.minecraft.world.level.block.state.BlockState st =
+                        level.getBlockState(p);
+                net.minecraft.world.InteractionResult out;
+                var viaItem = st.useItemOn(stack, level, fake,
+                        InteractionHand.MAIN_HAND, hit);
+                if (viaItem == net.minecraft.world.ItemInteractionResult
+                        .PASS_TO_DEFAULT_BLOCK_INTERACTION) {
+                    out = st.useWithoutItem(level, fake, hit);
+                    if (!out.consumesAction() && !stack.isEmpty()) {
+                        out = stack.useOn(new UseOnContext(level, fake,
+                                InteractionHand.MAIN_HAND, stack, hit));
+                    }
+                } else {
+                    out = viaItem.result();
+                }
                 res.addProperty("ok", out.consumesAction());
                 res.addProperty("result", out.toString());
+                res.addProperty("block", blockId(st));
+                if (!out.consumesAction()) {
+                    // Say WHY nothing happened, because "PASS" alone is
+                    // indistinguishable from a bug - as it was until now.
+                    res.addProperty("note", "the block declined."
+                            + (sneak ? "" : " Some blocks put a second action behind"
+                            + " a crouched click - try \"sneak\": true.")
+                            + " A block whose right-click opens a screen cannot be"
+                            + " operated this way at all: there is nobody here to"
+                            + " look at it.");
+                }
+                fake.setShiftKeyDown(false);
             }
             case "scan" -> {
                 BlockPos from = pos(a, "from");
@@ -775,6 +898,117 @@ public final class Bridge {
                 res.addProperty("state", st.toString());
                 res.addProperty("light", level.getRawBrightness(p, 0));
             }
+            case "fill", "clear" -> {
+                // The two verbs that can wreck a base in one call, so they are
+                // gated the same way craft is - on rank, not on trust - and
+                // they both honour buildinggadgets2:deny block by block.
+                ServerPlayer who = requester(server, a);
+                if (!Perms.allows(who, Perms.Ability.WORLD)) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "rank");
+                    res.addProperty("rank", Perms.rank(who));
+                    res.addProperty("detail", Perms.refusal(Perms.Ability.WORLD));
+                    break;
+                }
+                BlockPos c1 = pos(a, "from");
+                BlockPos c2 = pos(a, "to");
+                java.util.Map<String, Object> done;
+                if ("clear".equals(what)) {
+                    boolean drop = !a.has("drop") || a.get("drop").getAsBoolean();
+                    done = Bulk.clear(level, c1, c2, drop);
+                } else {
+                    JsonElement which = a.has("block") ? a.get("block")
+                            : a.has("item") ? a.get("item") : null;
+                    if (which == null) {
+                        res.addProperty("ok", false);
+                        res.addProperty("error",
+                                "fill needs \"block\" naming what to fill with");
+                        break;
+                    }
+                    ItemLookup.BlockResult found =
+                            ItemLookup.resolveBlock(which.getAsString());
+                    if (!found.ok()) {
+                        // Same reasoning as place: an unresolved name must never
+                        // fall through to AIR, or a typo becomes an excavation.
+                        res.addProperty("ok", false);
+                        res.addProperty("error", found.error);
+                        if (!found.candidates.isEmpty()) {
+                            res.add("candidates", JsonParser.parseString(
+                                    new Gson().toJson(found.candidates)));
+                        }
+                        break;
+                    }
+                    boolean onlyAir = a.has("onlyAir") && a.get("onlyAir").getAsBoolean();
+                    done = Bulk.fill(level, c1, c2, found.block, onlyAir);
+                }
+                res.add("result", JsonParser.parseString(new Gson().toJson(done)));
+                res.addProperty("ok", Boolean.TRUE.equals(done.get("ok")));
+            }
+            case "slots" -> {
+                res.add("inventory", JsonParser.parseString(new Gson().toJson(
+                        Slots.list(level, pos(a, "at")))));
+                res.addProperty("ok", true);
+            }
+            case "worn" -> {
+                ghost.body.Body body = ghost.body.Bodies.find(server);
+                if (body == null) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "I have no body here to be wearing anything");
+                } else {
+                    res.add("worn", JsonParser.parseString(new Gson().toJson(
+                            Slots.worn(body))));
+                    res.addProperty("ok", true);
+                }
+            }
+            case "bag" -> {
+                ghost.body.Body body = ghost.body.Bodies.find(server);
+                if (body == null) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "I have no body here to carry anything");
+                } else {
+                    res.add("bag", JsonParser.parseString(new Gson().toJson(
+                            Slots.bag(body.bag()))));
+                    res.addProperty("ok", true);
+                }
+            }
+            case "take", "put" -> {
+                ServerPlayer who = requester(server, a);
+                if (!Perms.allows(who, Perms.Ability.WORLD)) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "rank");
+                    res.addProperty("rank", Perms.rank(who));
+                    res.addProperty("detail", Perms.refusal(Perms.Ability.WORLD));
+                    break;
+                }
+                ghost.body.Body body = ghost.body.Bodies.find(server);
+                if (body == null) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "I have no body here to carry anything");
+                    break;
+                }
+                BlockPos at = pos(a, "at");
+                int slot = a.has("slot") ? a.get("slot").getAsInt() : 0;
+                int count = a.has("count") ? a.get("count").getAsInt() : 64;
+                java.util.Map<String, Object> done;
+                if ("take".equals(what)) {
+                    done = Slots.take(level, at, slot, count, body.bag());
+                } else {
+                    net.minecraft.world.item.Item want = null;
+                    if (a.has("item")) {
+                        ItemLookup.Result found =
+                                ItemLookup.resolve(a.get("item").getAsString());
+                        if (!found.ok()) {
+                            res.addProperty("ok", false);
+                            res.addProperty("error", found.error);
+                            break;
+                        }
+                        want = found.item;
+                    }
+                    done = Slots.put(level, at, slot, count, want, body.bag());
+                }
+                res.add("result", JsonParser.parseString(new Gson().toJson(done)));
+                res.addProperty("ok", Boolean.TRUE.equals(done.get("ok")));
+            }
             default -> {
                 res.addProperty("ok", false);
                 res.addProperty("error", "unknown action: " + what);
@@ -799,14 +1033,25 @@ public final class Bridge {
         // The errand is over: come back. A body that stays where the last
         // action happened would drift across the base one job at a time and
         // never be where you are, which is the opposite of having one.
+        //
+        // But NOT while she is still walking there. A batch finishes in a tick
+        // or two and a walk takes seconds, so clearing unconditionally here
+        // cancelled the journey before she arrived - every short walk, the ones
+        // under the teleport threshold that actually go on foot, was recalled
+        // mid-transit and never completed. She now releases the post herself the
+        // moment she arrives, and gives up on her own after 90 seconds if she
+        // cannot, so nothing is left holding a stale posting either way.
         ghost.body.Body body = ghost.body.Bodies.find(server);
-        if (body != null && !body.stationed()) {
+        if (body != null && !body.stationed() && !body.travelling()) {
             body.clearPost();
         }
 
         JsonObject out = new JsonObject();
         out.addProperty("finishedAt", java.time.OffsetDateTime.now().toString());
         out.addProperty("batch", batches);
+        if (currentId != null) {
+            out.addProperty("id", currentId);
+        }
         out.add("results", RESULTS.deepCopy());
         write(out);
         while (RESULTS.size() > 0) {
@@ -818,9 +1063,21 @@ public final class Bridge {
         JsonObject out = new JsonObject();
         out.addProperty("error", msg);
         out.addProperty("finishedAt", java.time.OffsetDateTime.now().toString());
+        if (currentId != null) {
+            out.addProperty("id", currentId);
+        }
         write(out);
     }
 
+    /**
+     * Publish one answer three ways.
+     *
+     * <p>{@code outbox.json} stays the newest result, because that is what
+     * everything already reads. {@code out/&lt;id&gt;.json} is the addressed
+     * copy - the one a caller can poll for its OWN answer without racing
+     * anyone. {@code outbox.jsonl} is the append-only history, so an answer
+     * that arrived while nobody was looking is still there afterwards.
+     */
     private static void write(JsonObject out) {
         try (Writer w = Files.newBufferedWriter(outbox(), StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
@@ -828,5 +1085,28 @@ public final class Bridge {
         } catch (IOException e) {
             Ghost.LOG.error("could not write outbox", e);
         }
+        if (currentId != null) {
+            try {
+                Files.createDirectories(outDir());
+                Path mine = outDir().resolve(currentId + ".json");
+                try (Writer w = Files.newBufferedWriter(mine, StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                    GSON.toJson(out, w);
+                }
+            } catch (Exception e) {
+                Ghost.LOG.error("could not write addressed result for {}", currentId, e);
+            }
+        }
+        try {
+            // One line, no pretty printing - this file is read by tail, and a
+            // multi-line record would break a reader that assumes one per line.
+            Files.writeString(outLog(),
+                    new com.google.gson.Gson().toJson(out) + System.lineSeparator(),
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            Ghost.LOG.error("could not append outbox log", e);
+        }
+        currentId = null;
     }
 }

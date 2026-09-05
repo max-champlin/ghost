@@ -15,6 +15,49 @@ If you want your own agent to be able to *actually operate your base*, read on.
 
 ---
 
+## Running a local model? Start here: [`docs/actions.schema.json`](docs/actions.schema.json)
+
+**This one file is the difference between "needs a 70B" and "runs on 12GB of VRAM."**
+
+Ghost is driven by JSON. Emitting valid JSON is the single thing small models
+reliably fail at — a 7B will get the verbs right and then forget a brace, quote a
+number, or invent a field, and every one of those is a dead request. Constrained
+decoding removes that failure mode completely: the sampler is not *asked* to
+produce valid JSON, it is made **incapable** of producing anything else.
+
+So hand your runtime the schema and stop parsing apologies:
+
+```bash
+# Ollama - jq builds the body so the schema is embedded as JSON, not as a
+# string. Passing it with bare shell quoting is where this usually goes wrong.
+jq -n --argjson schema "$(cat docs/actions.schema.json)" \
+   --arg ask "Shelby, what is in the ME system?" \
+   '{model: "qwen2.5:7b-instruct", stream: false, format: $schema,
+     messages: [{role: "user", content: $ask}]}' \
+| curl -s localhost:11434/api/chat -d @-
+```
+
+```bash
+# llama.cpp server
+jq -n --argjson schema "$(cat docs/actions.schema.json)" \
+   '{prompt: "...", json_schema: $schema}' \
+| curl -s localhost:8080/completion -d @-
+```
+
+```bash
+# vLLM
+--guided-json docs/actions.schema.json
+```
+
+The schema covers all 29 verbs, the position format, and which fields belong to
+which action, so the model also cannot ask for `craft` without an item or invent
+a verb that does not exist. Malformed output stops being a class of bug.
+
+Sizing, prompt shape, and which verbs need more model than others are further
+down in [Running it on a local model](#running-it-on-a-local-model).
+
+---
+
 ## Why this exists
 
 Almost every AI-in-Minecraft project is built on a headless bot that connects
@@ -197,8 +240,8 @@ a starting point and expect your own mileage to differ:
 
 - **1-3B** - can drive templated single actions (`say`, a scan at given
   coordinates) with the schema enforced. Will not choose sensibly between
-  eighteen verbs or interpret a block census. Usable as a command parser, not as
-  an assistant.
+  twenty-nine verbs or interpret a block census. Usable as a command parser, not
+  as an assistant.
 - **7-8B** (Llama 3.1 8B, Qwen2.5 7B, Mistral 7B) - the realistic floor for
   useful autonomous work. Picks the right verb, reads a result, answers in
   chat. This is where most home labs should start.
@@ -206,6 +249,29 @@ a starting point and expect your own mileage to differ:
   thing, read it, act on what it said.
 - **32B+** - good. Worth it if you want it reasoning about *modded* systems
   rather than reporting them.
+
+### What actually works on barebones
+
+Verb by verb, so you can size honestly rather than discovering it in your base.
+The line that matters is not "can it emit the JSON" - the schema guarantees that
+at any size - it is **"can it choose the right verb and read the answer".**
+
+| tier | verbs it can be trusted with | why |
+|---|---|---|
+| **1-3B** | `say` `where` `read` `find` `have` `places` `worn` `bag` | literal lookups where *you* named the thing. It transcribes, it does not decide. |
+| **7-8B** | the above plus `goto` `post` `return` `slots` `scan` `entities` `take` `put` `craft` (item named explicitly) | picks a verb from a request, reads a result back, answers in chat. The realistic floor. |
+| **14B+** | plus `blockmap` `cells` `waitFor` and multi-step chains | holds a census in context and reasons over it; decides *which* verb without being told. |
+
+**Do not point a small model at the destructive four.** `break`, `place`, `fill`
+and `clear` are gated on op 2 in the mod for a reason. A 3B that transposes two
+digits of a coordinate on `clear` removes a 16x16x16 chunk of somebody's base,
+and no amount of schema validity prevents that - the JSON is perfectly well
+formed, it just means something you did not ask for. `command` is worse again.
+Give those a model you would trust with a rollback, or keep them behind a human.
+
+`fill`/`clear` do cap at 4096 blocks and skip anything tagged
+`buildinggadgets2:deny`, so the blast radius is bounded - but bounded is not the
+same as safe.
 
 **What size does not fix:** a local model will not know what a storage bus or
 Insanium farmland is. It can still report exact counts and positions and let you

@@ -27,3 +27,57 @@ dependencies {
     // guarded by a ModList check so the mod runs fine without it.
     compileOnly 'org.appliedenergistics:appliedenergistics2:19.2.17:api'
 }
+
+// ---------------------------------------------------------------------------
+// The action schema must not drift from the verbs Bridge actually handles.
+//
+// docs/actions.schema.json is not documentation - a local model is given it as
+// a decoding constraint, so a verb missing from the enum is a verb that model
+// is physically incapable of emitting. The failure is silent and looks like the
+// model being stupid rather than the schema being stale. It had already drifted
+// by eleven verbs once, which is what prompted this.
+//
+// Cheap to check, so it runs on every build rather than on a promise to
+// remember.
+tasks.register('checkVerbs') {
+    description = 'Fail if docs/actions.schema.json disagrees with Bridge.java'
+    group = 'verification'
+
+    def bridgeFile = file('src/main/java/ghost/Bridge.java')
+    def schemaFile = file('docs/actions.schema.json')
+    inputs.file(bridgeFile)
+    inputs.file(schemaFile)
+
+    doLast {
+        // Handles both `case "a" ->` and `case "a", "b" ->`.
+        def handled = [] as TreeSet
+        bridgeFile.eachLine { line ->
+            def m = line =~ /^\s*case\s+("[^"]+"(?:\s*,\s*"[^"]+")*)\s*->/
+            if (m.find()) {
+                def labels = m.group(1)
+                (labels =~ /"([^"]+)"/).each { handled << it[1] }
+            }
+        }
+        if (handled.isEmpty()) {
+            throw new GradleException(
+                'checkVerbs found no case labels in Bridge.java - the parser is ' +
+                'broken, which is worse than a drifted schema. Fix this task.')
+        }
+
+        def json = new groovy.json.JsonSlurper().parse(schemaFile)
+        def declared = new TreeSet(json['$defs'].action.properties.'do'.enum)
+
+        def missing = handled - declared
+        def extra = declared - handled
+        if (missing || extra) {
+            throw new GradleException(
+                "docs/actions.schema.json is out of step with Bridge.java\n" +
+                (missing ? "  handled but NOT in the schema (a model cannot ask for these): ${missing.join(', ')}\n" : '') +
+                (extra   ? "  in the schema but NOT handled (a model will ask and get 'unknown action'): ${extra.join(', ')}\n" : '') +
+                "  update the enum in \$defs.action.properties.do")
+        }
+        logger.lifecycle("checkVerbs: schema and Bridge agree on ${handled.size()} verbs")
+    }
+}
+
+tasks.named('build') { dependsOn 'checkVerbs' }

@@ -7,6 +7,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.EntityType;
@@ -94,6 +96,37 @@ public class Body extends PathfinderMob {
     /** Who to keep up with; survives dimension changes and reloads. */
     private UUID followId;
 
+    /**
+     * How fast she closes on someone who is flying, in blocks per tick.
+     *
+     * <p>Deliberately below a creative-flight sprint. Matching it exactly would
+     * park her inside the player's head; being a little slower means she trails
+     * behind and reads as following rather than being attached.
+     */
+    private static final double HOVER_SPEED = 0.45;
+
+    /** True while she is holding station in the air because her player is. */
+    private boolean hovering;
+
+    /**
+     * What she is carrying.
+     *
+     * <p>Until now she could hold exactly one stack, in her hand, which meant
+     * every errand that moved more than one kind of item had to be a separate
+     * trip. A satchel is the difference between "fetch me that" and "go and
+     * tidy that up" - and it is what {@code take} and {@code put} move things
+     * into and out of.
+     *
+     * <p>A single chest's worth on purpose. Bigger would make her a mobile
+     * storage system, which is a different thing from an assistant and one the
+     * base already has better answers for.
+     */
+    private final SimpleContainer bag = new SimpleContainer(27);
+
+    public SimpleContainer bag() {
+        return bag;
+    }
+
     private int keepUpCooldown;
     private int unpathableTicks;
 
@@ -119,6 +152,9 @@ public class Body extends PathfinderMob {
      */
     private boolean postSticky;
 
+    /** Game time the current errand posting was set, for the give-up timer. */
+    private long postSince;
+
     public Body(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
         setPersistenceRequired();
@@ -126,9 +162,18 @@ public class Body extends PathfinderMob {
         if (!hasCustomName()) {
             setCustomName(Component.literal("Shelby"));
         }
-        // Anything she is wearing comes back if she is ever removed. She can
-        // only be got rid of with /kill, and losing a set of someone's good
-        // armour to a housekeeping command would be a nasty surprise.
+        guaranteeDrops();
+    }
+
+    /**
+     * Anything she is wearing comes back if she is ever removed.
+     *
+     * <p>She can only be got rid of with {@code /kill}, and losing a set of
+     * someone's good armour to a housekeeping command would be a nasty
+     * surprise. Called from the constructor AND after every load, because the
+     * load overwrites it - see {@link #readAdditionalSaveData}.
+     */
+    private void guaranteeDrops() {
         for (EquipmentSlot slot : EquipmentSlot.values()) {
             setGuaranteedDrop(slot);
         }
@@ -151,7 +196,34 @@ public class Body extends PathfinderMob {
         this.post = site;
         this.postSticky = sticky;
         this.unpathableTicks = 0;
+        this.postSince = level().getGameTime();
     }
+
+    /**
+     * Is she still on her way somewhere she was sent?
+     *
+     * <p>The bridge asks before recalling her at the end of a batch. A batch
+     * finishes in a tick or two; a walk across the base takes seconds. Recalling
+     * on batch-end therefore cancelled every errand before she arrived, and any
+     * walk under the 24-block teleport threshold - the ones that go on foot -
+     * never completed at all. Reported from in-game as "the walk keeps getting
+     * recalled mid-transit", which is exactly what it was.
+     */
+    public boolean travelling() {
+        return post != null && !postSticky && !arrived(ARRIVE_WITHIN);
+    }
+
+    /** How close counts as "there", for an errand. */
+    private static final double ARRIVE_WITHIN = 3.0;
+
+    /**
+     * Ticks an errand may run before it is abandoned.
+     *
+     * <p>Without this, a post she can never reach would hold her off following
+     * anyone, forever, with nothing left to clear it - the walk fix removes the
+     * batch-end clear that used to (accidentally) do that job.
+     */
+    private static final int ERRAND_LIMIT = 20 * 90;
 
     /** True when she was stationed on purpose and must not be auto-recalled. */
     public boolean stationed() {
@@ -185,13 +257,24 @@ public class Body extends PathfinderMob {
      * <ul>
      *   <li>right-click holding <b>armour</b> - she wears it, and hands back
      *       whatever was in that slot</li>
-     *   <li>right-click with an <b>empty hand</b> - she takes one thing off</li>
+     *   <li>right-click with an <b>empty hand</b> - she says what she is
+     *       wearing. It reads out, it does not undress her.</li>
+     *   <li><b>sneak</b> + empty hand - she takes one thing off</li>
      *   <li><b>sneak</b> right-click holding anything else - she holds it</li>
      * </ul>
      *
      * <p>Non-armour deliberately does nothing on a plain right-click. Equipping
      * whatever happens to be in hand would mean walking up to say hello and
      * silently giving away your pickaxe.
+     *
+     * <p>Taking armour off <b>used to be the bare right-click</b>, which is the
+     * single most common thing anyone does to a mob standing in front of them.
+     * One absent-minded click removed a piece and put it in your pack; four
+     * removed a whole suit, and if your inventory was full it went on the floor
+     * instead. That is exactly how a set of armour goes missing without anyone
+     * doing anything they would remember. Undressing now needs a sneak - the
+     * same "sneak to undo" gesture the golems use for leaving a crew - and the
+     * bare click became the harmless, useful one.
      */
     @Override
     protected InteractionResult mobInteract(Player player, InteractionHand hand) {
@@ -201,7 +284,13 @@ public class Body extends PathfinderMob {
         ItemStack held = player.getItemInHand(hand);
 
         if (held.isEmpty()) {
-            return player.isShiftKeyDown() ? InteractionResult.PASS : undress(player);
+            if (player.isShiftKeyDown()) {
+                return undress(player);
+            }
+            player.displayClientMessage(Component.literal(
+                    "Shelby is wearing " + ghost.Slots.wornLine(this)
+                            + ".  Sneak + right-click to take something off."), false);
+            return InteractionResult.SUCCESS;
         }
 
         EquipmentSlot slot = getEquipmentSlotForItem(held);
@@ -360,6 +449,7 @@ public class Body extends PathfinderMob {
         // Without this, "stay by the bed" survived exactly until the next
         // restart and then she quietly went back to following - which looks
         // like the order was ignored rather than forgotten.
+        tag.put("Bag", bag.createTag(registryAccess()));
         if (post != null) {
             tag.putInt("PostX", post.getX());
             tag.putInt("PostY", post.getY());
@@ -375,10 +465,34 @@ public class Body extends PathfinderMob {
         post = tag.contains("PostX")
                 ? new BlockPos(tag.getInt("PostX"), tag.getInt("PostY"), tag.getInt("PostZ"))
                 : null;
+        bag.fromTag(tag.getList("Bag", 10), registryAccess());
+        // Re-assert the guaranteed drops.
+        //
+        // The constructor sets them, and then THIS METHOD's super call quietly
+        // undoes it: Mob.readAdditionalSaveData overwrites the drop-chance array
+        // from the saved ArmorDropChances. So every body loaded from disk came
+        // back at the vanilla 0.085 default, and the protection the constructor
+        // was written to provide had never once been in effect on a real,
+        // saved-and-reloaded Shelby. Found by reading 0.085 out of a backup
+        // while looking for a suit of armour that had gone missing.
+        guaranteeDrops();
         postSticky = tag.getBoolean("PostSticky");
+        // NoGravity is vanilla-persisted, and hovering is not. Quitting or
+        // crashing mid-flight would otherwise restore a body that floats
+        // forever with nothing left running to turn it off again.
+        hovering = false;
+        setNoGravity(false);
     }
 
     // --- keeping up -------------------------------------------------------
+
+    @Override
+    public void aiStep() {
+        super.aiStep();
+        if (!level().isClientSide && hovering) {
+            holdStation();
+        }
+    }
 
     @Override
     protected void customServerAiStep() {
@@ -412,6 +526,24 @@ public class Body extends PathfinderMob {
         }
 
         double d2 = distanceToSqr(p);
+
+        // Airborne players need a different answer entirely.
+        //
+        // Everything below this assumes the ground: the navigator paths over
+        // walkable blocks, and stepAcrossTo hunts for a WALKABLE landing spot.
+        // Neither exists under someone in creative flight, so the search fell
+        // through to arriveAt() at the player's own feet and she dropped out of
+        // the sky the instant she caught up - repeatedly, and from any height.
+        if (airborne(p)) {
+            beginHover();
+            if (d2 > TELEPORT_AT * TELEPORT_AT) {
+                stepAcrossToAir(p.position());
+            }
+            unpathableTicks = 0;
+            return;
+        }
+        endHover();
+
         if (d2 < FOLLOW_START * FOLLOW_START) {
             unpathableTicks = 0;
             return;
@@ -439,8 +571,23 @@ public class Body extends PathfinderMob {
      * walk when walking is reasonable, step across when it is not.
      */
     private void travelToPost() {
-        if (arrived(3.0)) {
+        if (arrived(ARRIVE_WITHIN)) {
             unpathableTicks = 0;
+            // Arriving is what ends an errand. A stationed post is a standing
+            // order and stays until it is explicitly released.
+            if (!postSticky) {
+                clearPost();
+            }
+            return;
+        }
+        // Reloaded mid-errand, or posted before this field existed.
+        if (postSince == 0L) {
+            postSince = level().getGameTime();
+        }
+        if (!postSticky && level().getGameTime() - postSince > ERRAND_LIMIT) {
+            ghost.Ghost.LOG.warn("giving up on errand post at {} after {} ticks",
+                    post, ERRAND_LIMIT);
+            clearPost();
             return;
         }
         double d2 = distanceToSqr(post.getX() + 0.5, post.getY(), post.getZ() + 0.5);
@@ -473,12 +620,81 @@ public class Body extends PathfinderMob {
             return;
         }
         server.execute(() -> {
-            if (isAlive() && level() != dest) {
-                changeDimension(new DimensionTransition(
-                        dest, at, Vec3.ZERO, getYRot(), getXRot(),
-                        DimensionTransition.DO_NOTHING));
+            if (!isAlive() || level() == dest) {
+                return;
+            }
+            // Snapshot BEFORE the crossing, because the crossing is where she
+            // can be lost.
+            //
+            // Entity.changeDimension removes this entity first and only then
+            // tries to build its replacement. If that build returns null the
+            // old one is already gone and nothing is ever added back - no
+            // exception, no log line, just an entity that stops existing along
+            // with everything it was wearing. That is not a theory: a full set
+            // of Inferium armour went missing this way and there was not one
+            // line in the log to find, because nothing here checked.
+            CompoundTag snapshot = new CompoundTag();
+            saveWithoutId(snapshot);
+            stash(snapshot);
+
+            Entity arrived = changeDimension(new DimensionTransition(
+                    dest, at, Vec3.ZERO, getYRot(), getXRot(),
+                    DimensionTransition.DO_NOTHING));
+
+            if (arrived == null) {
+                ghost.Ghost.LOG.error(
+                        "body was LOST crossing into {} - rebuilding from snapshot",
+                        dest.dimension().location());
+                rebuild(dest, at, snapshot);
             }
         });
+    }
+
+    /**
+     * Put her back together after a crossing that ate her.
+     *
+     * <p>Same identity, same inventory, same clothes - the snapshot is the
+     * entity's own NBT, taken a moment before it vanished. The Dimension key is
+     * dropped because it names where she came FROM.
+     */
+    private static void rebuild(ServerLevel dest, Vec3 at, CompoundTag snapshot) {
+        try {
+            Body fresh = Bodies.SHELBY.get().create(dest);
+            if (fresh == null) {
+                ghost.Ghost.LOG.error("could not recreate the body at all - "
+                        + "snapshot is on disk at ghost/lastbody.snbt");
+                return;
+            }
+            snapshot.remove("Dimension");
+            snapshot.remove("UUID");   // a fresh one, or the level rejects the add
+            fresh.load(snapshot);
+            fresh.setPos(at.x, at.y, at.z);
+            dest.addFreshEntity(fresh);
+            ghost.Ghost.LOG.info("body rebuilt in {} at {}",
+                    dest.dimension().location(), at);
+        } catch (Exception e) {
+            ghost.Ghost.LOG.error("rebuilding the body failed", e);
+        }
+    }
+
+    /**
+     * Keep the last pre-crossing snapshot on disk.
+     *
+     * <p>Belt and braces over the in-memory rebuild. Recovering the last lost
+     * suit meant parsing region files out of a backup zip; one small file
+     * written at the one moment things are known to go wrong turns that into
+     * reading a text file.
+     */
+    private static void stash(CompoundTag snapshot) {
+        try {
+            java.nio.file.Files.writeString(
+                    ghost.Sampler.dir().resolve("lastbody.snbt"),
+                    snapshot.toString(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // Never let bookkeeping stop the crossing itself.
+            ghost.Ghost.LOG.warn("could not write lastbody.snbt", e);
+        }
     }
 
     /**
@@ -490,6 +706,72 @@ public class Body extends PathfinderMob {
      * rejected she arrives anyway. Being briefly inside a wall is recoverable
      * and she is invulnerable; being lost forever is the bug we are fixing.
      */
+    /**
+     * Is this player off the ground in a way she cannot walk to?
+     *
+     * <p>Creative flight and an elytra both count. Ordinary jumping and falling
+     * do not - those resolve themselves in under a second, and switching her
+     * into a hover for them would make every hop look like a glitch.
+     */
+    private static boolean airborne(Player p) {
+        return p.getAbilities().flying || p.isFallFlying();
+    }
+
+    private void beginHover() {
+        if (hovering) {
+            return;
+        }
+        hovering = true;
+        setNoGravity(true);
+        // A ground path to a point in the sky is unreachable by definition, and
+        // leaving it running means the navigator fights the station-keeping
+        // below for control of her velocity every tick.
+        getNavigation().stop();
+    }
+
+    private void endHover() {
+        if (!hovering) {
+            return;
+        }
+        hovering = false;
+        setNoGravity(false);
+    }
+
+    /**
+     * Keep station on a flying player. Runs every tick, unlike the keep-up
+     * check, because a velocity nudge once a second is a series of lurches.
+     */
+    private void holdStation() {
+        Player p = followed();
+        if (p == null || p.level() != level() || !airborne(p)) {
+            endHover();
+            return;
+        }
+        // Slightly above eye level, so she is in view rather than underfoot.
+        Vec3 gap = p.position().add(0.0, 0.6, 0.0).subtract(position());
+        double away = gap.length();
+        if (away < FOLLOW_STOP) {
+            // Bleed off speed instead of stopping dead, or she jitters against
+            // the stop radius every tick.
+            setDeltaMovement(getDeltaMovement().scale(0.6));
+        } else {
+            setDeltaMovement(gap.normalize().scale(Math.min(HOVER_SPEED, away / 8.0)));
+        }
+        getLookControl().setLookAt(p, 30.0F, 30.0F);
+        // Vanilla only clears fall distance on landing, and she never lands
+        // while hovering - so without this she banks up a lethal number and
+        // takes it all the moment gravity comes back on.
+        fallDistance = 0.0F;
+    }
+
+    /** Arrive beside a flying player, in the air, rather than under them. */
+    private void stepAcrossToAir(Vec3 at) {
+        beginHover();
+        double ang = random.nextDouble() * Math.PI * 2.0;
+        arriveAt(at.x + Math.cos(ang) * 2.5, at.y + 0.6, at.z + Math.sin(ang) * 2.5);
+        setDeltaMovement(Vec3.ZERO);
+    }
+
     private void stepAcrossTo(BlockPos around) {
         for (int i = 0; i < 10; i++) {
             int dx = random.nextIntBetweenInclusive(-3, 3);
