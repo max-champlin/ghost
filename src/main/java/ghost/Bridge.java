@@ -196,11 +196,13 @@ public final class Bridge {
             res.addProperty("action", act.has("do") ? act.get("do").getAsString() : "?");
             res.addProperty("travelled", true);
             res.addProperty("arrived", there);
+            String[] before = snapshotBody(server);
             try {
                 run(server, act, res);
             } catch (Exception e) {
                 res.addProperty("ok", false);
                 res.addProperty("error", String.valueOf(e));
+                explain(e, res, server, before);
                 Ghost.LOG.error("bridge action failed after travel: {}", act, e);
             }
             RESULTS.add(res);
@@ -239,11 +241,13 @@ public final class Bridge {
         JsonObject act = QUEUE.poll();
         JsonObject res = new JsonObject();
         res.addProperty("action", act.has("do") ? act.get("do").getAsString() : "?");
+        String[] before = snapshotBody(server);
         try {
             run(server, act, res);
         } catch (Exception e) {
             res.addProperty("ok", false);
             res.addProperty("error", String.valueOf(e));
+            explain(e, res, server, before);
             Ghost.LOG.error("bridge action failed: {}", act, e);
         }
         RESULTS.add(res);
@@ -328,6 +332,70 @@ public final class Bridge {
         } catch (Exception e) {
             Ghost.LOG.error("could not read inbox", e);
             writeError(String.valueOf(e));
+        }
+    }
+
+    /** Where the body is, as {dimension, "x y z"}, or null if there is none. */
+    private static String[] snapshotBody(MinecraftServer server) {
+        ghost.body.Body b = ghost.body.Bodies.find(server);
+        if (b == null) {
+            return null;
+        }
+        BlockPos at = b.blockPosition();
+        return new String[]{b.level().dimension().location().toString(),
+                at.getX() + " " + at.getY() + " " + at.getZ()};
+    }
+
+    /**
+     * Work out what a thrown exception actually means, by looking.
+     *
+     * <p>An exception says a code path did not finish. It does NOT say nothing
+     * happened - and treating the two as the same produces the mirror image of
+     * a confident false success: a confident false FAILURE. Entering a pocket
+     * dimension throws on a fake player's missing network channel, but only
+     * <em>after</em> the entity has already been moved. Reporting that as
+     * {@code ok:false} with a stack trace describes the one step that failed and
+     * hides the one that worked.
+     *
+     * <p>So before saying a thing failed: check whether the world moved. If she
+     * changed dimension or was carried somewhere, the load-bearing part happened
+     * and the caller needs to know that far more than it needs the trace.
+     */
+    private static void explain(Exception e, JsonObject res,
+                                MinecraftServer server, String[] before) {
+        String s = String.valueOf(e);
+        boolean noConnection = s.contains("io.netty") || s.contains("Connection.channel");
+
+        String[] after = snapshotBody(server);
+        if (before != null && after != null) {
+            if (!before[0].equals(after[0])) {
+                // Dimension changed. Whatever threw, the move landed.
+                res.addProperty("ok", true);
+                res.addProperty("partial", true);
+                res.addProperty("movedTo", after[0]);
+                res.addProperty("at", after[1]);
+                res.addProperty("why", "the interaction threw, but only after it "
+                        + "had already carried her from " + before[0] + " to "
+                        + after[0] + ". The part that matters happened; the step "
+                        + "that failed was a follow-up that wanted a real "
+                        + "client to talk to.");
+                return;
+            }
+            if (!before[1].equals(after[1])) {
+                res.addProperty("movedFrom", before[1]);
+                res.addProperty("at", after[1]);
+                res.addProperty("note", "she moved despite the error - check "
+                        + "where she is before assuming nothing happened.");
+            }
+        }
+
+        if (noConnection) {
+            res.addProperty("why", "that block wants a real player's network "
+                    + "connection - it is trying to send a packet or open a "
+                    + "screen, and the stand-in used for world interaction has "
+                    + "no client attached to send anything to. Note this is "
+                    + "raised by a FOLLOW-UP step: check whether the thing you "
+                    + "wanted has already happened before retrying.");
         }
     }
 
@@ -612,32 +680,69 @@ public final class Bridge {
                 res.addProperty("ok", true);
             }
             case "goto" -> {
-                // Walk the body somewhere. Pathing, not teleporting: she should
-                // arrive by crossing the ground the player crosses, so "go and
-                // look" means something. Teleport is available with "warp" for
-                // when a wall or a drop makes that impossible.
+                // Send the body somewhere - and make it STICK.
+                //
+                // This used to set no posting at all, which meant the follow
+                // logic simply won. It runs once a second, sees she is further
+                // from the player than TELEPORT_AT, and steps her straight back.
+                // So a warp really did happen, was really undone a second later,
+                // and reported {"warped": true} - true at the instant it was
+                // written and worthless by the time anyone looked. A confident
+                // false success is worse than an error, so: post her first, then
+                // move her.
                 BlockPos p = pos(a, "at");
-                ghost.body.Body body = level.getEntitiesOfClass(ghost.body.Body.class,
-                                new net.minecraft.world.phys.AABB(BlockPos.ZERO).inflate(3.0E7))
-                        .stream().findFirst().orElse(null);
+                ghost.body.Body body = ghost.body.Bodies.find(server);
                 if (body == null) {
                     res.addProperty("ok", false);
                     res.addProperty("error", "no body - /ghost body first");
-                } else if (a.has("warp") && a.get("warp").getAsBoolean()) {
+                    break;
+                }
+                if (body.level() != level) {
+                    // Say so rather than teleporting her within the wrong world.
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "she is in "
+                            + body.level().dimension().location() + ", not "
+                            + level.dimension().location());
+                    break;
+                }
+                // Stationed, not an errand: an errand clears itself on arrival
+                // and she would resume following, which for a target this far
+                // away means walking straight back. "return" releases her.
+                body.postTo(p, true);
+
+                boolean warp = a.has("warp") && a.get("warp").getAsBoolean();
+                if (warp) {
                     body.teleportTo(p.getX() + 0.5, p.getY(), p.getZ() + 0.5);
-                    res.addProperty("ok", true);
-                    res.addProperty("warped", true);
                 } else {
                     boolean started = body.getNavigation()
                             .moveTo(p.getX() + 0.5, p.getY(), p.getZ() + 0.5, 1.0);
-                    res.addProperty("ok", started);
-                    res.addProperty("distance",
-                            Math.round(Math.sqrt(body.distanceToSqr(
-                                    p.getX() + 0.5, p.getY(), p.getZ() + 0.5))));
+                    res.addProperty("pathing", started);
                     if (!started) {
-                        res.addProperty("error", "no path from here");
+                        res.addProperty("note", "no path from here - she will keep "
+                                + "trying and step across on her own if she cannot "
+                                + "walk it");
                     }
                 }
+                // Report where she ACTUALLY is, not where she was told to go.
+                // Every other claim in this reply is intent; this one is
+                // observation, and it is the only one worth trusting.
+                net.minecraft.core.BlockPos now = body.blockPosition();
+                double off = Math.sqrt(body.distanceToSqr(
+                        p.getX() + 0.5, p.getY(), p.getZ() + 0.5));
+                res.addProperty("ok", true);
+                res.addProperty("at", now.getX() + " " + now.getY() + " " + now.getZ());
+                res.addProperty("blocksAway", Math.round(off));
+                res.addProperty("stationed", true);
+                if (warp) {
+                    // Verified, not assumed. If a mod or a mixin refuses the
+                    // teleport this says so instead of claiming victory.
+                    res.addProperty("warped", off <= 2.0);
+                    if (off > 2.0) {
+                        res.addProperty("error", "the teleport did not take - she is "
+                                + Math.round(off) + " blocks from the target");
+                    }
+                }
+                res.addProperty("holds", "she stays here until \"return\"");
             }
             case "remember" -> {
                 // Naming a place once turns every later instruction into the
