@@ -28,7 +28,7 @@
             "break", "place", "use", "command", "wait", "waitFor",
             "remember", "forget", "places", "cells",
             "slots", "bag", "worn", "take", "put", "fill", "clear",
-            "withdraw", "deposit", "crouch", "jump"
+            "withdraw", "deposit", "crouch", "jump", "undo"
           ]
         },
 

@@ -49,7 +49,7 @@ jq -n --argjson schema "$(cat docs/actions.schema.json)" \
 --guided-json docs/actions.schema.json
 ```
 
-The schema covers all 29 verbs, the position format, and which fields belong to
+The schema covers all 34 verbs, the position format, and which fields belong to
 which action, so the model also cannot ask for `craft` without an item or invent
 a verb that does not exist. Malformed output stops being a class of bug.
 
@@ -57,6 +57,26 @@ Sizing, prompt shape, and which verbs need more model than others are further
 down in [Running it on a local model](#running-it-on-a-local-model).
 
 ---
+
+## What it looks like in practice
+
+Everything below has been done, watched happening, and measured — not designed
+and hoped for:
+
+- **Rode a modded elevator** and landed on the same block the mod sends a player
+  to. Elevator ID computes its destination entirely client-side, so there is no
+  server call to make — the search is reimplemented and the destination checked
+  against a real player's ride.
+- **Pulled items out of an ME network** into a satchel, carried them, and put
+  them back. Not by driving a terminal GUI slot by slot — through AE2's storage
+  API.
+- **Followed a player into another dimension**, and crossed on request.
+- **Wears armour you hand her**, and reports its durability when you ask.
+- **Gets picked up with Carry On** and carried to a job.
+
+That last one is not a feature anybody wrote. It works because she is an entity
+in the world rather than a client pretending to be one, and that difference is
+the whole point.
 
 ## Why this exists
 
@@ -240,7 +260,7 @@ a starting point and expect your own mileage to differ:
 
 - **1-3B** - can drive templated single actions (`say`, a scan at given
   coordinates) with the schema enforced. Will not choose sensibly between
-  twenty-nine verbs or interpret a block census. Usable as a command parser, not
+  thirty-four verbs or interpret a block census. Usable as a command parser, not
   as an assistant.
 - **7-8B** (Llama 3.1 8B, Qwen2.5 7B, Mistral 7B) - the realistic floor for
   useful autonomous work. Picks the right verb, reads a result, answers in
@@ -304,10 +324,54 @@ verified, the jar contains zero `appeng` classes. AE2 is never needed at runtime
 either; players install it the normal way, and every AE2 call here is guarded by
 a `ModList` check so Ghost runs fine without it.
 
+## Design: report and undo, do not refuse
+
+Destructive verbs do **not** carry a can't-touch list. An earlier version
+honoured `buildinggadgets2:deny` on single-block `break`, which sounded prudent
+and meant she could not mine any of the 400 ores that tag covers.
+
+The reasoning that replaced it: that tag exists for **area tools** — a
+Destruction Gadget sweeps a room and cannot be reasoned with, so a blacklist is
+right. A single block someone typed a coordinate for is aimed at by definition.
+You do not drop a pin for a lawnmower and then have it refuse the grass.
+
+So instead:
+
+- `break` and `place` do the job, and **announce in chat** when the block was
+  something normally protected. A wrong instruction becomes visible rather than
+  silently prevented.
+- **`undo` takes back the last action** — blocks and their contents, so undoing
+  a broken chest returns the chest and what was in it.
+- `fill` and `clear` **do** still skip protected blocks. Those are the area case,
+  and nobody aims at each block in a 4096-block sweep.
+
+`undo` is deliberately **one step**. Not a stack, not a timeline, and it does not
+recall what the original action dropped. A mulligan, not a time machine —
+consequences stay real, they just stop being permanent.
+
 ## Status
 
 Working and in daily use on a 613-mod Minecraft 1.21.1 pack. Not yet released to
 Modrinth or CurseForge.
+
+**Verified by observation**, with a second agent session driving the bridge and a
+player watching: reads, travel and the action delay, the satchel round trip,
+`withdraw`/`deposit`, `goto`/`warp`, and the elevator ride (destination compared
+against a real player's).
+
+**Not yet exercised:** `fill` and `clear` have never been run, and `place`'s
+break-for-drops path has not been hit on an unprotected block.
+
+Worth knowing what shook out of that testing, because it is the honest shape of
+the project rather than the marketing: **eleven separate cases where a result
+meant two things at once** — a teleport reporting success it had not caused, an
+exception treated as proof nothing happened when the work had already landed, a
+verb returning PASS because the block was never asked, an elevator reporting
+nothing both for "not on one" and "on one with nowhere to go". Every one was
+found by somebody refusing to accept a green result. Results now report what was
+*measured* rather than what was attempted, and name which outcome occurred — but
+that is a habit the codebase had to be taught, and new verbs will need the same
+scrutiny.
 
 ## Credits
 

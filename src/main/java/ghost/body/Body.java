@@ -664,6 +664,18 @@ public class Body extends PathfinderMob {
      * partway through the level's own iteration over its entities is how you get
      * a concurrent modification that only shows up on someone else's machine.
      */
+    /**
+     * Cross to another world on purpose, rather than because someone walked.
+     *
+     * <p>Same machinery as following through a portal - snapshot first, verify
+     * arrival, rebuild if the transfer eats her - just reached deliberately.
+     * A warp that refuses to cross a dimension is not much of a warp, and
+     * "he is in the mining dimension and she is not" is an ordinary Tuesday.
+     */
+    public void crossTo(ServerLevel dest, Vec3 at) {
+        followThrough(dest, at);
+    }
+
     private void followThrough(ServerLevel dest, Vec3 at) {
         MinecraftServer server = getServer();
         if (server == null) {

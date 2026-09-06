@@ -62,6 +62,22 @@ public final class Chat {
     private static final java.util.Map<java.util.UUID, Integer> PENDING =
             new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * When the oldest currently-unanswered ask arrived, in millis, or 0.
+     *
+     * <p>Used to notice that whatever drives this has stopped. The mod cannot
+     * tell "thinking" from "nobody home" - but the PLAYER cannot either, and
+     * that is the problem: he asks, gets a cheerful acknowledgement, and then
+     * silence that looks identical to being ignored. Reported from the driving
+     * side after a background watcher died unnoticed and a real request sat
+     * unanswered.
+     */
+    private static volatile long oldestAskAt;
+
+    public static long oldestAskAt() {
+        return oldestAskAt;
+    }
+
     /** Everyone's unanswered asks. */
     public static int pending() {
         int total = 0;
@@ -78,11 +94,15 @@ public final class Chat {
 
     public static void clearPending() {
         PENDING.clear();
+        oldestAskAt = 0L;
     }
 
     /** Answered one person without answering the room. */
     public static void clearPending(java.util.UUID who) {
         PENDING.remove(who);
+        if (PENDING.isEmpty()) {
+            oldestAskAt = 0L;
+        }
     }
 
     private static void append(String file, JsonObject o) {
@@ -119,6 +139,9 @@ public final class Chat {
             return false;
         }
         PENDING.merge(player.getUUID(), 1, Integer::sum);
+        if (oldestAskAt == 0L) {
+            oldestAskAt = System.currentTimeMillis();
+        }
         append("asks.jsonl", o);
         reply(player, ack(player, text));
         return true;

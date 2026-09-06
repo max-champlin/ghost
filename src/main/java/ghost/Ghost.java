@@ -57,6 +57,9 @@ public class Ghost {
     private void onServerTick(ServerTickEvent.Post event) {
         Watch.tick(event.getServer());
         Bridge.tick(event.getServer());
+        // Says so when a question has been sitting unanswered - the one
+        // failure the mod can see but the player cannot.
+        Deadman.tick(event.getServer());
         // AE2 plans crafts on a background thread; this is where a finished
         // plan gets submitted and the result said out loud.
         Storage.tickCrafting(event.getServer());

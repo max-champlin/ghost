@@ -499,16 +499,91 @@ public final class Bridge {
         }
     }
 
+    /**
+     * Which world an action happens in.
+     *
+     * <p>Defaults to the PLAYER's dimension, which is usually what someone
+     * means by "here" - but note it is not the body's. If Max walks into the
+     * mining dimension and leaves Shelby in the overworld, a coordinate scan
+     * reads the mining dimension while {@code where} reports the overworld.
+     * Both are honest and they are about different subjects, which is why every
+     * result now says which world it used and why.
+     */
     private static ServerLevel level(MinecraftServer server, JsonObject a) {
         if (a.has("dim")) {
+            String want = a.get("dim").getAsString();
             for (ServerLevel l : server.getAllLevels()) {
-                if (l.dimension().location().toString().equals(a.get("dim").getAsString())) {
+                if (l.dimension().location().toString().equals(want)) {
                     return l;
                 }
             }
+            // Refuse rather than quietly using somewhere else.
+            //
+            // This used to fall through to the player's dimension, so a typo in
+            // "dim" returned a perfectly formed answer about the wrong world -
+            // the caller asked for one place, got another, and nothing said so.
+            StringBuilder known = new StringBuilder();
+            for (ServerLevel l : server.getAllLevels()) {
+                if (known.length() > 0) {
+                    known.append(", ");
+                }
+                known.append(l.dimension().location());
+            }
+            throw new IllegalArgumentException("no dimension called \"" + want
+                    + "\" - loaded: " + known);
         }
         ServerPlayer p = server.getPlayerList().getPlayers().stream().findFirst().orElse(null);
         return p != null ? p.serverLevel() : server.overworld();
+    }
+
+    /**
+     * Say out loud when a job touches something on the protection list.
+     *
+     * <p>Not a veto. {@code buildinggadgets2:deny} guards against an AREA tool
+     * destroying things nobody aimed at; a single named block is aimed at by
+     * definition. The value of the list here is as a WARNING - "you just had me
+     * break a conduit" is worth saying, and worth saying in chat where the
+     * player will see it, not only in a JSON field an agent may not read.
+     *
+     * <p>{@code fill} and {@code clear} still skip these blocks outright. They
+     * are the area case the tag was written for, and there the veto is right.
+     */
+    private static void noteProtected(MinecraftServer server, ServerLevel level,
+                                      BlockPos at, BlockState st, JsonObject res,
+                                      String verb) {
+        if (!st.is(DENY)) {
+            return;
+        }
+        String id = blockId(st);
+        res.addProperty("protected", true);
+        res.addProperty("warning", "that block is on the protection list ("
+                + id + ") - normally only area tools are kept off it. Doing it "
+                + "anyway because you named this one.");
+        // In chat as well, because the person who cares most is standing there.
+        String where = at.getX() + " " + at.getY() + " " + at.getZ();
+        for (ServerPlayer sp : server.getPlayerList().getPlayers()) {
+            if (sp.level() != level) {
+                continue;
+            }
+            sp.sendSystemMessage(net.minecraft.network.chat.Component
+                    .literal("[Shelby] ")
+                    .withStyle(net.minecraft.ChatFormatting.AQUA)
+                    .append(net.minecraft.network.chat.Component.literal(
+                            "about to " + verb + " " + id + " at " + where
+                            + " - that one is normally protected.")
+                            .withStyle(net.minecraft.ChatFormatting.YELLOW)));
+        }
+    }
+
+    /** Why that world, so a surprising answer explains itself. */
+    private static String dimSource(MinecraftServer server, JsonObject a) {
+        if (a.has("dim")) {
+            return "you asked for it";
+        }
+        ServerPlayer p = server.getPlayerList().getPlayers().stream().findFirst().orElse(null);
+        return p != null
+                ? "defaulted to where " + p.getGameProfile().getName() + " is standing"
+                : "no players online - defaulted to the overworld";
     }
 
     /** Where "here" means when no position is given: the first player, else spawn. */
@@ -621,6 +696,12 @@ public final class Bridge {
     private static void run(MinecraftServer server, JsonObject a, JsonObject res) {
         String what = a.get("do").getAsString();
         ServerLevel level = level(server, a);
+        // On EVERY result, not just the ones that happen to mention it. A
+        // coordinate means nothing without a world, and the expensive way to
+        // find that out is to read terrain from somewhere you were not asking
+        // about and believe it.
+        res.addProperty("dimension", level.dimension().location().toString());
+        res.addProperty("dimFrom", dimSource(server, a));
 
         // "go": true - send her there first, and run this when she arrives.
         // Go there first - by default, for anything hands-on.
@@ -699,12 +780,24 @@ public final class Bridge {
             case "break" -> {
                 BlockPos p = pos(a, "at");
                 BlockState st = level.getBlockState(p);
-                if (st.is(DENY)) {
-                    res.addProperty("ok", false);
-                    res.addProperty("refused", "block is in buildinggadgets2:deny");
-                    res.addProperty("block", blockId(st));
-                    break;
-                }
+                // Report, do not refuse.
+                //
+                // buildinggadgets2:deny is a list for AREA tools - it stops a
+                // Destruction Gadget swinging through a room and eating things,
+                // which is a real risk because a gadget cannot be reasoned with.
+                // Shelby is not a gadget: she is handed ONE block by someone who
+                // typed the coordinate. Applying a tool's blacklist to her made
+                // 400 ores unmineable to guard against a rare mistyped position,
+                // which is the wrong trade - it broke the ordinary job to
+                // prevent the unusual one.
+                //
+                // So she does the work and says loudly what it was. A wrong
+                // assignment becomes VISIBLE rather than silently prevented,
+                // which is the right shape for an assistant: check the job, then
+                // do it, and be honest about what you touched.
+                noteProtected(server, level, p, st, res, "break");
+                Undo.begin(level, Undo.label("break", st));
+                Undo.record(level, p);
                 res.addProperty("was", blockId(st));
                 boolean drop = !a.has("drop") || a.get("drop").getAsBoolean();
                 res.addProperty("ok", level.destroyBlock(p, drop));
@@ -734,7 +827,27 @@ public final class Bridge {
                         }
                     } else {
                         BlockPos p = pos(a, "at");
-                        String was = blockId(level.getBlockState(p));
+                        net.minecraft.world.level.block.state.BlockState had =
+                                level.getBlockState(p);
+                        String was = blockId(had);
+                        // The deny tag protects a block from being DESTROYED,
+                        // and overwriting destroys it just as surely as mining
+                        // it does. "break" honoured this and "place" did not, so
+                        // a protected block could still be erased - just without
+                        // ever yielding its drops. Found the expensive way: a
+                        // break refused three coal ore and the place in the same
+                        // batch overwrote them anyway, so they were lost with
+                        // nothing collected. fill already reasoned this out;
+                        // place never got the same treatment.
+                        noteProtected(server, level, p, had, res, "overwrite");
+                        Undo.begin(level, Undo.label("place over", had));
+                        Undo.record(level, p);
+                        // Break it first so it DROPS rather than being
+                        // annihilated. setBlockAndUpdate over a chest destroys
+                        // the chest and everything in it without a trace.
+                        if (!had.isAir()) {
+                            level.destroyBlock(p, true);
+                        }
                         res.addProperty("ok",
                                 level.setBlockAndUpdate(p, found.block.defaultBlockState()));
                         res.addProperty("was", was);
@@ -835,12 +948,38 @@ public final class Bridge {
                     res.addProperty("error", "no body - /ghost body first");
                     break;
                 }
+                boolean warpFlag = a.has("warp") && a.get("warp").getAsBoolean();
                 if (body.level() != level) {
-                    // Say so rather than teleporting her within the wrong world.
-                    res.addProperty("ok", false);
-                    res.addProperty("error", "she is in "
-                            + body.level().dimension().location() + ", not "
-                            + level.dimension().location());
+                    // A warp may cross; a walk may not. Refusing outright was
+                    // too blunt - "he is in the mining dimension and she is in
+                    // the overworld" is an ordinary situation, and a teleport
+                    // that will not teleport across a dimension is not much of
+                    // a teleport. Walking there is still impossible, so that
+                    // still refuses.
+                    if (!warpFlag) {
+                        res.addProperty("ok", false);
+                        res.addProperty("error", "she is in "
+                                + body.level().dimension().location() + ", not "
+                                + level.dimension().location()
+                                + " - she cannot walk between worlds. Use "
+                                + "\"warp\": true, or \"return\" and let her "
+                                + "follow whoever is over there.");
+                        break;
+                    }
+                    body.postTo(p, true);
+                    // Deferred to the end of the tick and verified on arrival:
+                    // changeDimension removes her BEFORE building the
+                    // replacement, so a failed crossing would otherwise delete
+                    // her and everything she carries.
+                    body.crossTo(level, new net.minecraft.world.phys.Vec3(
+                            p.getX() + 0.5, p.getY(), p.getZ() + 0.5));
+                    res.addProperty("ok", true);
+                    res.addProperty("crossing", true);
+                    res.addProperty("from", body.level().dimension().location().toString());
+                    res.addProperty("to", level.dimension().location().toString());
+                    res.addProperty("note", "crossing worlds - it lands at the end "
+                            + "of this tick, so check \"where\" next batch rather "
+                            + "than trusting this line.");
                     break;
                 }
                 // Stationed, not an errand: an errand clears itself on arrival
@@ -848,7 +987,7 @@ public final class Bridge {
                 // away means walking straight back. "return" releases her.
                 body.postTo(p, true);
 
-                boolean warp = a.has("warp") && a.get("warp").getAsBoolean();
+                boolean warp = warpFlag;
                 if (warp) {
                     body.teleportTo(p.getX() + 0.5, p.getY(), p.getZ() + 0.5);
                 } else {
@@ -1292,6 +1431,23 @@ public final class Bridge {
                 }
                 res.add("result", JsonParser.parseString(new Gson().toJson(done)));
                 res.addProperty("ok", Boolean.TRUE.equals(done.get("ok")));
+            }
+            case "undo" -> {
+                // The mulligan. She no longer refuses to touch anything, so the
+                // safety net is being able to take back the last thing she did
+                // rather than being stopped from doing it.
+                ServerPlayer who = requester(server, a);
+                if (!Perms.allows(who, Perms.Ability.WORLD)) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "rank");
+                    res.addProperty("detail", Perms.refusal(Perms.Ability.WORLD));
+                    break;
+                }
+                boolean peek = a.has("check") && a.get("check").getAsBoolean();
+                java.util.Map<String, Object> done = peek
+                        ? Undo.describe() : Undo.undo();
+                res.add("result", JsonParser.parseString(new Gson().toJson(done)));
+                res.addProperty("ok", peek || Boolean.TRUE.equals(done.get("ok")));
             }
             case "crouch", "jump" -> {
                 // Real body states, not flags on a request. She physically

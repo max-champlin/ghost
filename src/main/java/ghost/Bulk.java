@@ -88,6 +88,7 @@ final class Bulk {
         if (size > MAX_BLOCKS) {
             return tooBig(size);
         }
+        Undo.begin(level, "clear " + size + " blocks");
         int cleared = 0;
         int alreadyAir = 0;
         List<String> refusedNames = new ArrayList<>();
@@ -109,6 +110,7 @@ final class Bulk {
             }
             // immutable(): betweenClosed hands back one mutable cursor, and
             // destroyBlock can run long enough for it to have moved on.
+            Undo.record(level, p);
             if (level.destroyBlock(p.immutable(), drop)) {
                 cleared++;
             }
@@ -138,6 +140,8 @@ final class Bulk {
         if (size > MAX_BLOCKS) {
             return tooBig(size);
         }
+        Undo.begin(level, "fill " + size + " with "
+                + BuiltInRegistries.BLOCK.getKey(what));
         BlockState want = what.defaultBlockState();
         int placed = 0;
         int skipped = 0;
@@ -164,6 +168,7 @@ final class Bulk {
                 skipped++;
                 continue;
             }
+            Undo.record(level, p);
             if (!st.isAir() && what != Blocks.AIR) {
                 // Break it first so it drops rather than being annihilated.
                 level.destroyBlock(p.immutable(), true);

@@ -48,18 +48,20 @@ public class MarkerItem extends Item {
         }
         ItemStack stack = ctx.getItemInHand();
 
-        // The item's own name IS the place name. An anvil is a naming tool
-        // everybody already owns, and it means no GUI and no chat prompt.
-        if (!stack.has(DataComponents.CUSTOM_NAME)) {
-            say(player, ChatFormatting.YELLOW,
-                    "Name this in an anvil first - whatever you call it becomes "
-                    + "the name of the place. \"garden\", \"elevator\", \"drives\".");
-            return InteractionResult.SUCCESS;
-        }
-        String name = stack.getHoverName().getString().trim();
+        // The item's own name IS the place name, if it has one. An anvil is a
+        // naming tool everybody already owns, so no GUI and no chat prompt.
+        //
+        // But an UNNAMED marker still works. Refusing until the tool had been
+        // to an anvil meant the first thing it ever did was tell you off - point
+        // it at a block, get a lecture, three times. A tool that does nothing
+        // until you have read the instructions is a bad tool. So an unnamed one
+        // picks the next free markN and says which it used; renaming is then an
+        // improvement rather than a toll gate.
+        boolean named = stack.has(DataComponents.CUSTOM_NAME);
+        String name = named ? stack.getHoverName().getString().trim() : nextFreeName();
         if (name.isEmpty()) {
-            say(player, ChatFormatting.YELLOW, "That name is blank.");
-            return InteractionResult.SUCCESS;
+            name = nextFreeName();
+            named = false;
         }
 
         BlockPos at = ctx.getClickedPos();
@@ -101,9 +103,27 @@ public class MarkerItem extends Item {
             Places.remember(name, place);
             say(player, ChatFormatting.GREEN, (isNew ? "Marked \"" : "Moved \"")
                     + name + "\" to " + at.getX() + " " + at.getY() + " " + at.getZ()
-                    + (place.hasBox() ? " (box kept)" : ""));
+                    + (place.hasBox() ? " (box kept)" : "")
+                    + (named ? "" : "  -  name this in an anvil to choose the name."));
         }
         return InteractionResult.SUCCESS;
+    }
+
+    /**
+     * The first {@code markN} nobody is using.
+     *
+     * <p>Deliberately does not reuse a number that has been freed, so two
+     * places marked minutes apart never share a name and a stale instruction
+     * cannot quietly point at new ground.
+     */
+    private static String nextFreeName() {
+        for (int i = 1; i < 1000; i++) {
+            String candidate = "mark" + i;
+            if (!Places.has(candidate)) {
+                return candidate;
+            }
+        }
+        return "mark" + System.currentTimeMillis();
     }
 
     private static void say(Player player, ChatFormatting colour, String text) {
