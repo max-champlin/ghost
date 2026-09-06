@@ -72,10 +72,27 @@ public final class Chat {
      * side after a background watcher died unnoticed and a real request sat
      * unanswered.
      */
-    private static volatile long oldestAskAt;
+    private static final java.util.Map<java.util.UUID, Long> ASKED_AT =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * When the oldest STILL-unanswered ask arrived, or 0 if nobody is waiting.
+     *
+     * <p>Computed across everyone rather than held in one field. A single
+     * scalar repeated the exact bug the comment on PENDING describes: it was
+     * stamped by whoever asked first and never moved, so answering that person
+     * left the timestamp of their answered question standing as the measure of
+     * everyone else's wait - and the deadman warning fired on a clock that had
+     * stopped being about anyone.
+     */
     public static long oldestAskAt() {
-        return oldestAskAt;
+        long oldest = 0L;
+        for (long t : ASKED_AT.values()) {
+            if (oldest == 0L || t < oldest) {
+                oldest = t;
+            }
+        }
+        return oldest;
     }
 
     /** Everyone's unanswered asks. */
@@ -94,15 +111,13 @@ public final class Chat {
 
     public static void clearPending() {
         PENDING.clear();
-        oldestAskAt = 0L;
+        ASKED_AT.clear();
     }
 
     /** Answered one person without answering the room. */
     public static void clearPending(java.util.UUID who) {
         PENDING.remove(who);
-        if (PENDING.isEmpty()) {
-            oldestAskAt = 0L;
-        }
+        ASKED_AT.remove(who);
     }
 
     private static void append(String file, JsonObject o) {
@@ -139,9 +154,10 @@ public final class Chat {
             return false;
         }
         PENDING.merge(player.getUUID(), 1, Integer::sum);
-        if (oldestAskAt == 0L) {
-            oldestAskAt = System.currentTimeMillis();
-        }
+        // putIfAbsent: their FIRST unanswered ask is the one that has been
+        // waiting. Asking again while still unanswered must not restart their
+        // clock, or a person who repeats themselves is never noticed.
+        ASKED_AT.putIfAbsent(player.getUUID(), System.currentTimeMillis());
         append("asks.jsonl", o);
         reply(player, ack(player, text));
         return true;

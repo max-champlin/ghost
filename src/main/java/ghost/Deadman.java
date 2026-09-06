@@ -39,8 +39,16 @@ final class Deadman {
      */
     private static final long QUIET_MS = 90_000L;
 
-    /** Only once per silence, so it is a warning and not a nag. */
-    private static boolean told;
+    /**
+     * The ask we last warned about, so the warning is once per silence and not
+     * a nag - but still fires again for a DIFFERENT one.
+     *
+     * <p>A boolean here meant "warned at some point", and it only reset when
+     * every ask had been answered. On a busy server that never happens, so the
+     * warning would fire once in the world's lifetime and then stay quiet
+     * through every later outage.
+     */
+    private static long toldAbout;
 
     /** Checked once a second; there is nothing here worth doing per tick. */
     private static int cooldown;
@@ -53,17 +61,17 @@ final class Deadman {
 
         long oldest = Chat.oldestAskAt();
         if (oldest == 0L) {
-            told = false;          // nothing waiting: re-arm for next time
+            toldAbout = 0L;        // nothing waiting: re-arm for next time
             return;
         }
-        if (told) {
-            return;
+        if (toldAbout == oldest) {
+            return;                // already said so about this one
         }
         long waited = System.currentTimeMillis() - oldest;
         if (waited < QUIET_MS) {
             return;
         }
-        told = true;
+        toldAbout = oldest;
 
         int n = Chat.pending();
         String how = !Bridge.armed()
