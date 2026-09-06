@@ -5,10 +5,14 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -117,10 +121,24 @@ final class Undo {
         }
         int restored = 0;
         int failed = 0;
-        for (Map.Entry<BlockPos, Was> e : BEFORE.entrySet()) {
+
+        // Lowest first. A door's lower half is back before its upper half looks
+        // for it, and sand settles onto ground that has already returned rather
+        // than falling through a hole not yet filled in.
+        List<Map.Entry<BlockPos, Was>> order = new ArrayList<>(BEFORE.entrySet());
+        order.sort(Comparator.comparingInt(en -> en.getKey().getY()));
+
+        for (Map.Entry<BlockPos, Was> e : order) {
             try {
                 BlockPos p = e.getKey();
-                where.setBlock(p, e.getValue().state(), 3);
+                // UPDATE_CLIENTS | UPDATE_KNOWN_SHAPE. Tell the client, but do
+                // NOT let neighbours re-evaluate while the restore is half
+                // done. With a plain flag 3 the first torch goes back before
+                // the wall it hangs on, finds no support, and pops - so undoing
+                // a cleared room would quietly drop a share of what it had just
+                // put back, and report every one of them as restored.
+                where.setBlock(p, e.getValue().state(),
+                        Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
                 CompoundTag data = e.getValue().data();
                 if (data != null) {
                     BlockEntity be = where.getBlockEntity(p);
@@ -135,6 +153,17 @@ final class Undo {
                 Ghost.LOG.warn("could not restore {}", e.getKey(), ex);
             }
         }
+
+        // Everything is standing now, so it is safe to let the world react:
+        // redstone re-latches, water re-flows, observers fire.
+        for (Map.Entry<BlockPos, Was> e : order) {
+            try {
+                where.updateNeighborsAt(e.getKey(), e.getValue().state().getBlock());
+            } catch (Exception ex) {
+                Ghost.LOG.warn("neighbour update failed at {}", e.getKey(), ex);
+            }
+        }
+
         out.put("ok", restored > 0);
         out.put("undid", description);
         out.put("restored", restored);
