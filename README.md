@@ -356,11 +356,12 @@ Modrinth or CurseForge.
 
 **Verified by observation**, with a second agent session driving the bridge and a
 player watching: reads, travel and the action delay, the satchel round trip,
-`withdraw`/`deposit`, `goto`/`warp`, and the elevator ride (destination compared
-against a real player's).
+`withdraw`/`deposit`, `goto`/`warp`, `crouch`/`jump`, the elevator ride
+(destination compared against a real player's own), and `clear` (checked by
+reading the blocks afterwards, not by trusting the count).
 
-**Not yet exercised:** `fill` and `clear` have never been run, and `place`'s
-break-for-drops path has not been hit on an unprotected block.
+**Not yet exercised:** `undo`, `fill`, the cross-dimension warp, the deadman
+check, and `place`'s break-for-drops path on a solid unprotected block.
 
 Worth knowing what shook out of that testing, because it is the honest shape of
 the project rather than the marketing: **eleven separate cases where a result
