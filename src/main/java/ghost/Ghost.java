@@ -25,6 +25,7 @@ public class Ghost {
 
     public Ghost(IEventBus modBus) {
         ghost.body.Bodies.register(modBus);
+        GhostItems.register(modBus);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(this::onServerTick);
         NeoForge.EVENT_BUS.addListener(this::onChat);

@@ -364,9 +364,30 @@ public final class GhostCommand {
      */
     private static int body(CommandSourceStack src, String mode) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         net.minecraft.server.level.ServerLevel level = src.getLevel();
+        // EVERY dimension, not just this one.
+        //
+        // Clearing only the current level meant a body left behind in another
+        // dimension survived "body here" and quietly became a second Shelby.
+        // The verbs act on the first one found, which is not necessarily the one
+        // you are standing next to - so "where" reports a confident position for
+        // a body you cannot see, and every instruction goes to the wrong one.
+        // This is therefore also the recovery command for exactly that mess.
         int removed = 0;
-        for (ghost.body.Body b : level.getEntitiesOfClass(ghost.body.Body.class,
-                new net.minecraft.world.phys.AABB(net.minecraft.core.BlockPos.ZERO).inflate(3.0E7))) {
+        // Keep what she was wearing and carrying.
+        //
+        // "body here" discarded every existing body and stood up a blank one,
+        // which DESTROYED her armour and satchel - discard is a silent removal,
+        // so setGuaranteedDrop never fires and nothing lands on the floor. A
+        // command called "here" reads as "come here", not "delete her and build
+        // a replacement", and losing a suit of someone's armour to that is not
+        // a defensible default. Reported the hard way: a full Spider-Man set,
+        // twice in one evening.
+        net.minecraft.nbt.CompoundTag kit = null;
+        for (ghost.body.Body b : ghost.body.Bodies.all(src.getServer())) {
+            if (kit == null && !"away".equals(mode)) {
+                kit = new net.minecraft.nbt.CompoundTag();
+                b.saveWithoutId(kit);
+            }
             b.discard();
             removed++;
         }
@@ -388,8 +409,56 @@ public final class GhostCommand {
             src.sendFailure(Component.literal("Shelby: I could not place a body here."));
             return 0;
         }
-        src.sendSuccess(() -> Component.literal("Shelby: standing up"), false);
+        // Move the kit across. Position, posting and dimension deliberately are
+        // NOT carried - the whole point of the command is to put her somewhere
+        // else - so only the things she owns come with her.
+        final int moved = carryOver(kit, b);
+        src.sendSuccess(() -> Component.literal(moved > 0
+                ? "Shelby: standing up (brought " + moved + " item" + (moved == 1 ? "" : "s") + ")"
+                : "Shelby: standing up"), false);
         return 1;
+    }
+
+    /**
+     * Carry equipment and satchel from the old body to the new one.
+     *
+     * @return how many stacks came across, for the confirmation message
+     */
+    private static int carryOver(net.minecraft.nbt.CompoundTag kit, ghost.body.Body fresh) {
+        if (kit == null) {
+            return 0;
+        }
+        int moved = 0;
+        try {
+            // Equipment lives in the vanilla Mob lists; the satchel is ours.
+            for (String key : new String[]{"ArmorItems", "HandItems", "Bag"}) {
+                if (kit.contains(key, 9)) {
+                    moved += kit.getList(key, 10).size();
+                }
+            }
+            net.minecraft.nbt.CompoundTag keep = new net.minecraft.nbt.CompoundTag();
+            for (String key : new String[]{"ArmorItems", "HandItems", "ArmorDropChances",
+                    "HandDropChances", "Bag", "CustomName"}) {
+                if (kit.contains(key)) {
+                    keep.put(key, kit.get(key).copy());
+                }
+            }
+            // readAdditionalSaveData ONLY.
+            //
+            // Entity.load() was here too, and it reads Pos, Motion and Rotation
+            // from the tag it is given. This tag deliberately carries none of
+            // those - the point of the command is to put her somewhere NEW - so
+            // load() set her position to 0, 0, 0 and flung her to the world
+            // origin. She appeared beside the player and vanished in the same
+            // breath. It was also redundant: load() calls
+            // readAdditionalSaveData itself, so the kit was being read twice and
+            // the position destroyed for nothing.
+            fresh.readAdditionalSaveData(keep);
+        } catch (Exception e) {
+            ghost.Ghost.LOG.error("could not carry her kit to the new body", e);
+            return 0;
+        }
+        return moved;
     }
 
     private static int watch(CommandSourceStack src, int radius, int minutes) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

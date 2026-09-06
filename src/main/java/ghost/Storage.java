@@ -125,4 +125,41 @@ public final class Storage {
             Ghost.LOG.error("AE2 craft tick failed", t);
         }
     }
+
+    /**
+     * Take an item out of the ME network into the body's satchel.
+     *
+     * <p>Guarded here like every other AE2 call: the class that touches AE2
+     * types is only reached when AE2 is actually loaded, so this mod still runs
+     * without it.
+     */
+    static java.util.Map<String, Object> withdraw(
+            net.minecraft.server.level.ServerLevel level,
+            net.minecraft.core.BlockPos at, int radius,
+            net.minecraft.world.item.Item want, int count,
+            net.minecraft.world.SimpleContainer bag) {
+        if (!ae2Loaded()) {
+            return noAe2();
+        }
+        return Ae2.withdraw(level, at, radius, want, count, bag);
+    }
+
+    /** Put carried items back into the ME network. */
+    static java.util.Map<String, Object> deposit(
+            net.minecraft.server.level.ServerLevel level,
+            net.minecraft.core.BlockPos at, int radius,
+            net.minecraft.world.item.Item want,
+            net.minecraft.world.SimpleContainer bag) {
+        if (!ae2Loaded()) {
+            return noAe2();
+        }
+        return Ae2.deposit(level, at, radius, want, bag);
+    }
+
+    private static java.util.Map<String, Object> noAe2() {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("ok", false);
+        out.put("error", "Applied Energistics 2 is not installed");
+        return out;
+    }
 }

@@ -51,6 +51,34 @@ public final class Bodies {
      * body" the moment she was a portal away - and then said so in chat, which
      * is worse than saying nothing.
      */
+    /**
+     * Every live body, in every dimension.
+     *
+     * <p>There should be exactly one. There can be more: {@code /ghost body
+     * here} only clears bodies in the level it was run in, so one left behind in
+     * another dimension survives - and three different call sites used to look
+     * bodies up three different ways, one of which did not even filter for being
+     * alive. Two verbs could therefore be talking about two different entities
+     * while both reported confidently.
+     *
+     * <p>Reported by {@code where} so that "she is at X" can be checked against
+     * "and there is only one of her".
+     */
+    public static java.util.List<Body> all(net.minecraft.server.MinecraftServer server) {
+        java.util.List<Body> out = new java.util.ArrayList<>();
+        if (server == null) {
+            return out;
+        }
+        for (net.minecraft.server.level.ServerLevel level : server.getAllLevels()) {
+            for (Body body : level.getEntities(
+                    net.minecraft.world.level.entity.EntityTypeTest.forClass(Body.class),
+                    b -> b.isAlive())) {
+                out.add(body);
+            }
+        }
+        return out;
+    }
+
     public static Body find(net.minecraft.server.MinecraftServer server) {
         if (server == null) {
             return null;

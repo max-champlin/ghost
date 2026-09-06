@@ -155,6 +155,9 @@ public class Body extends PathfinderMob {
     /** Game time the current errand posting was set, for the give-up timer. */
     private long postSince;
 
+    /** Ticks left holding a crouch, so it is visible rather than instantaneous. */
+    private int crouchTicks;
+
     public Body(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
         setPersistenceRequired();
@@ -226,6 +229,29 @@ public class Body extends PathfinderMob {
     private static final int ERRAND_LIMIT = 20 * 90;
 
     /** True when she was stationed on purpose and must not be auto-recalled. */
+    /**
+     * Where she is trying to get to, or null if nowhere.
+     *
+     * <p>Exposed because every mystery about this body has been "why did she
+     * move", and nothing reported what she was TRYING to do - only where she
+     * ended up. A position without an intention is not diagnosable: an
+     * unexplained drift and a perfectly correct walk to a posting look identical
+     * from outside.
+     */
+    public BlockPos post() {
+        return post;
+    }
+
+    /** True while holding station in the air. */
+    public boolean hovering() {
+        return hovering;
+    }
+
+    /** Who she is keeping up with, or null. */
+    public java.util.UUID followedId() {
+        return followId;
+    }
+
     public boolean stationed() {
         return post != null && postSticky;
     }
@@ -492,6 +518,30 @@ public class Body extends PathfinderMob {
         if (!level().isClientSide && hovering) {
             holdStation();
         }
+        if (crouchTicks > 0 && --crouchTicks == 0) {
+            setShiftKeyDown(false);
+        }
+    }
+
+    /**
+     * Crouch, and hold it long enough to be seen.
+     *
+     * <p>A crouch set and cleared in one tick is invisible to everyone watching,
+     * which defeats the point of having a body at all. The renderer already
+     * follows {@code isCrouching()}, so this is the whole mechanism.
+     */
+    public void crouchFor(int ticks) {
+        crouchTicks = Math.max(1, ticks);
+        setShiftKeyDown(true);
+    }
+
+    /** Jump, if there is ground to jump from. */
+    public boolean hop() {
+        if (!onGround()) {
+            return false;
+        }
+        jumpFromGround();
+        return true;
     }
 
     @Override
@@ -783,6 +833,34 @@ public class Body extends PathfinderMob {
                 }
             }
         }
+        // Nothing walkable nearby, so look UP AND DOWN the column before
+        // giving up.
+        //
+        // The blind fallback below buried her. It places her at the target
+        // whatever is there, on the reasoning that being briefly inside a wall
+        // beats being lost - which is right, except "briefly" turned out to mean
+        // twenty minutes encased in a ceiling three blocks above the player,
+        // invisible (Entity Culling cannot trace to a buried entity) and
+        // reporting a confident position nobody could reconcile with the world.
+        // A column scan costs nothing and finds the floor or the surface.
+        for (int dy = 0; dy <= 12; dy++) {
+            for (int sign : new int[]{-1, 1}) {
+                int y = around.getY() + dy * sign;
+                if (level().isOutsideBuildHeight(y)) {
+                    continue;
+                }
+                if (tryStandAt(around.getX(), y, around.getZ())) {
+                    return;
+                }
+                if (dy == 0) {
+                    break;          // y+0 and y-0 are the same place
+                }
+            }
+        }
+        // Truly nowhere to stand. Place her anyway rather than lose her, but say
+        // so - a silently buried body is what made this hard to find.
+        ghost.Ghost.LOG.warn("no standable spot near {} - placing regardless; "
+                + "she may be inside a block", around);
         arriveAt(around.getX() + 0.5, around.getY(), around.getZ() + 0.5);
     }
 

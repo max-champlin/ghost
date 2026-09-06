@@ -90,8 +90,46 @@ public final class Bridge {
     private static JsonObject pendingGo;
     private static long goDeadline;
 
+    /**
+     * An action that has been reached for but not yet done.
+     *
+     * <p>The beat. She arrives, turns, puts a hand out - and then, a fraction
+     * later, the thing happens. Doing it in the same tick as the arrival reads
+     * as the world reacting to her presence rather than to her hands, which is
+     * exactly the "looks at you and poops out a block" problem. Four tenths of a
+     * second is enough to see cause and effect in the right order.
+     */
+    private static JsonObject pendingAct;
+    private static long actAt;
+
+    /** Ticks between reaching for a thing and the thing happening. */
+    private static final int BEAT = 8;
+
     /** How close counts as "there". */
     private static final double ARRIVED_WITHIN = 3.5;
+
+    /**
+     * A player's reach. Past this she walks over rather than acting at range.
+     *
+     * <p>This is the difference between an assistant and a cursor. Every
+     * hands-on verb used to work at any distance: she would stand across the
+     * room, not look up, and a block would appear in a chest forty blocks away.
+     * It worked, and it read as a scripted effect rather than as someone
+     * helping. If the pitch is "she works at your base with you", then she has
+     * to go to the chest.
+     */
+    private static final double REACH = 4.5;
+
+    /**
+     * Verbs that physically do something somewhere.
+     *
+     * <p>These travel by default. Reads ({@code scan}, {@code find},
+     * {@code read}, {@code have}) deliberately do not - she is allowed to know
+     * things without walking to them, the same way you can read a map.
+     */
+    private static final java.util.Set<String> HANDS_ON = java.util.Set.of(
+            "use", "break", "place", "take", "put", "slots",
+            "withdraw", "deposit", "fill", "clear");
 
     /** Longest she may spend travelling before the action happens anyway. */
     private static final int TRAVEL_TIMEOUT = 600;
@@ -181,6 +219,30 @@ public final class Bridge {
             waitTicks--;
             return;
         }
+        if (pendingAct != null) {
+            if (server.overworld().getGameTime() < actAt) {
+                return;                       // mid-reach; let it land
+            }
+            JsonObject act = pendingAct;
+            pendingAct = null;
+            JsonObject res = new JsonObject();
+            res.addProperty("action", act.has("do") ? act.get("do").getAsString() : "?");
+            res.addProperty("travelled", true);
+            String[] before = snapshotBody(server);
+            try {
+                run(server, act, res);
+            } catch (Exception e) {
+                res.addProperty("ok", false);
+                res.addProperty("error", String.valueOf(e));
+                explain(e, res, server, before);
+                Ghost.LOG.error("bridge action failed after the beat: {}", act, e);
+            }
+            RESULTS.add(res);
+            if (QUEUE.isEmpty() && !inFlight()) {
+                finish(server);
+            }
+            return;
+        }
         if (pendingGo != null) {
             ServerLevel lvl = level(server, pendingGo);
             ghost.body.Body body = ghost.body.Bodies.find(server);
@@ -192,23 +254,18 @@ public final class Bridge {
             JsonObject act = pendingGo;
             pendingGo = null;
             act.addProperty("__arrived", true);
-            JsonObject res = new JsonObject();
-            res.addProperty("action", act.has("do") ? act.get("do").getAsString() : "?");
-            res.addProperty("travelled", true);
-            res.addProperty("arrived", there);
-            String[] before = snapshotBody(server);
-            try {
-                run(server, act, res);
-            } catch (Exception e) {
-                res.addProperty("ok", false);
-                res.addProperty("error", String.valueOf(e));
-                explain(e, res, server, before);
-                Ghost.LOG.error("bridge action failed after travel: {}", act, e);
+            // She has walked to it; now face it and put a hand out, so the
+            // thing that happens next visibly comes from her.
+            if (body != null && act.has("at")) {
+                try {
+                    reachFor(body, pos(act, "at"));
+                } catch (Exception ignored) {
+                    // a named place that no longer resolves must not stop the work
+                }
             }
-            RESULTS.add(res);
-            if (QUEUE.isEmpty()) {
-                finish(server);
-            }
+            // Reached for above; now let the beat pass before it happens.
+            pendingAct = act;
+            actAt = server.overworld().getGameTime() + BEAT;
             return;
         }
         if (pendingWait != null) {
@@ -224,7 +281,7 @@ public final class Bridge {
             res.addProperty("timedOut", !met && expired);
             RESULTS.add(res);
             pendingWait = null;
-            if (QUEUE.isEmpty()) {
+            if (QUEUE.isEmpty() && !inFlight()) {
                 finish(server);
             }
             return;
@@ -251,7 +308,7 @@ public final class Bridge {
             Ghost.LOG.error("bridge action failed: {}", act, e);
         }
         RESULTS.add(res);
-        if (QUEUE.isEmpty()) {
+        if (QUEUE.isEmpty() && !inFlight()) {
             finish(server);
         }
     }
@@ -335,6 +392,25 @@ public final class Bridge {
         }
     }
 
+    /**
+     * Is any part of this batch still happening?
+     *
+     * <p>A batch is NOT over just because the queue drained. A hands-on verb
+     * arms a walk and returns immediately, so the dispatcher used to call
+     * {@code finish()} while the body was still crossing the room - which wrote
+     * the answer, and cleared {@code currentId}. The real result then arrived
+     * with no request id at all, went to {@code outbox.jsonl} only, and never
+     * reached the caller's own {@code out/<id>.json}. A caller polling its own
+     * file waited forever for an answer that had been filed anonymously.
+     *
+     * <p>Reported from in-game as "the travel-completion result never wrote to
+     * my out file". It is the single-slot mailbox bug again in miniature: the
+     * answer existed, and nothing said whose it was.
+     */
+    private static boolean inFlight() {
+        return pendingGo != null || pendingAct != null || pendingWait != null;
+    }
+
     /** Where the body is, as {dimension, "x y z"}, or null if there is none. */
     private static String[] snapshotBody(MinecraftServer server) {
         ghost.body.Body b = ghost.body.Bodies.find(server);
@@ -390,12 +466,36 @@ public final class Bridge {
         }
 
         if (noConnection) {
-            res.addProperty("why", "that block wants a real player's network "
-                    + "connection - it is trying to send a packet or open a "
-                    + "screen, and the stand-in used for world interaction has "
-                    + "no client attached to send anything to. Note this is "
-                    + "raised by a FOLLOW-UP step: check whether the thing you "
-                    + "wanted has already happened before retrying.");
+            res.addProperty("why", "the block tried to SEND something to the "
+                    + "player - a clientbound packet - and the stand-in used for "
+                    + "world interaction has no network channel to receive it. "
+                    + "Often this is cosmetic: DimensionalPocketsII throws here "
+                    + "playing the teleport SOUND, after the transfer it was "
+                    + "asked for already completed. It is not about screens or "
+                    + "menus. Check whether the thing you wanted has already "
+                    + "happened before you retry or report a failure.");
+        }
+    }
+
+    /**
+     * Face a thing and reach for it.
+     *
+     * <p>Cosmetic, and the point. An arm that swings and a head that turns are
+     * what make an action read as done BY someone rather than done TO the
+     * world; without them she stares into the middle distance while chests
+     * rearrange themselves. The container sound is here for the same reason -
+     * hearing a lid is most of what tells you a chest was opened.
+     */
+    private static void reachFor(ghost.body.Body body, BlockPos at) {
+        body.getLookControl().setLookAt(at.getX() + 0.5, at.getY() + 0.5, at.getZ() + 0.5);
+        body.swing(InteractionHand.MAIN_HAND, true);
+        if (body.level() instanceof ServerLevel lvl) {
+            net.minecraft.world.level.block.entity.BlockEntity be = lvl.getBlockEntity(at);
+            if (be instanceof net.minecraft.world.Container) {
+                lvl.playSound(null, at,
+                        net.minecraft.sounds.SoundEvents.CHEST_OPEN,
+                        net.minecraft.sounds.SoundSource.BLOCKS, 0.4F, 1.0F);
+            }
         }
     }
 
@@ -451,9 +551,10 @@ public final class Bridge {
     }
 
     private static BlockPos anchor(MinecraftServer server, ServerLevel level) {
-        ghost.body.Body body = level.getEntitiesOfClass(ghost.body.Body.class,
-                        new net.minecraft.world.phys.AABB(BlockPos.ZERO).inflate(3.0E7))
-                .stream().findFirst().orElse(null);
+        // Bodies.find, like everywhere else. This used to search one level with
+        // a 60-million-block box and no isAlive filter, so it could answer with
+        // a different entity than the verb standing next to it was moving.
+        ghost.body.Body body = ghost.body.Bodies.find(server);
         if (body != null) {
             return body.blockPosition();
         }
@@ -522,18 +623,55 @@ public final class Bridge {
         ServerLevel level = level(server, a);
 
         // "go": true - send her there first, and run this when she arrives.
-        if (a.has("go") && a.get("go").getAsBoolean()
-                && a.has("at") && !a.has("__arrived")) {
+        // Go there first - by default, for anything hands-on.
+        //
+        // "go" used to be opt-in, so the normal case was acting at arbitrary
+        // range. Now the normal case is walking over, and "go": false is the
+        // escape hatch for when you deliberately want the effect without the
+        // journey. Already within arm's length? Then there is nothing to walk,
+        // and she just does it.
+        boolean handsOn = HANDS_ON.contains(what);
+        boolean wantGo = a.has("go") ? a.get("go").getAsBoolean() : handsOn;
+
+        // A standing order outranks a default.
+        //
+        // Travelling by default is right for the common case and wrong the
+        // moment someone has deliberately STATIONED her: "wait by the bed" then
+        // "check that chest" should not walk her across the base and leave the
+        // post. The explicit instruction wins over the implied one, and an
+        // explicit "go": true still overrides that if the journey is the point.
+        //
+        // Found the honest way: an operator who had read the change still did
+        // not expect a network call to relocate her. A default that surprises
+        // someone who knows about it is too blunt.
+        if (wantGo && !a.has("go")) {
+            ghost.body.Body stationedBody = ghost.body.Bodies.find(server);
+            if (stationedBody != null && stationedBody.stationed()) {
+                wantGo = false;
+                res.addProperty("stayedPut", true);
+                res.addProperty("note", "she is stationed, so I did this from "
+                        + "where she stands rather than leaving the post. "
+                        + "\"go\": true to send her anyway.");
+            }
+        }
+        if (wantGo && a.has("at") && !a.has("__arrived")) {
             ghost.body.Body body = ghost.body.Bodies.find(server);
             if (body != null) {
                 BlockPos site = pos(a, "at");
-                body.postTo(site);
-                pendingGo = a;
-                goDeadline = level.getGameTime() + TRAVEL_TIMEOUT;
-                res.addProperty("ok", true);
-                res.addProperty("travelling", true);
-                res.addProperty("to", site.getX() + " " + site.getY() + " " + site.getZ());
-                return;
+                double away = Math.sqrt(body.distanceToSqr(
+                        site.getX() + 0.5, site.getY() + 0.5, site.getZ() + 0.5));
+                if (away <= REACH) {
+                    reachFor(body, site);      // close enough: reach, do not walk
+                } else {
+                    body.postTo(site);
+                    pendingGo = a;
+                    goDeadline = level.getGameTime() + TRAVEL_TIMEOUT;
+                    res.addProperty("ok", true);
+                    res.addProperty("travelling", true);
+                    res.addProperty("blocksAway", Math.round(away));
+                    res.addProperty("to", site.getX() + " " + site.getY() + " " + site.getZ());
+                    return;
+                }
             }
             // No body to send. Do it from here rather than refusing - the work
             // still needs doing, and saying so is better than silently pretending
@@ -791,16 +929,69 @@ public final class Bridge {
                 res.addProperty("ok", true);
             }
             case "where" -> {
-                // Where is she standing right now - so a report can say so.
-                ghost.body.Body body = level.getEntitiesOfClass(ghost.body.Body.class,
-                                new net.minecraft.world.phys.AABB(BlockPos.ZERO).inflate(3.0E7))
-                        .stream().findFirst().orElse(null);
+                // Where is she standing right now - and is there only one of her.
+                //
+                // This used to search a single level with a giant box and no
+                // isAlive filter, while every other verb used Bodies.find across
+                // all levels. Two verbs could confidently describe two different
+                // entities, and a position that nobody could see in-world looked
+                // like a rendering fault rather than the answer being about
+                // someone else. It now reports the census as well as the answer.
+                java.util.List<ghost.body.Body> bodies = ghost.body.Bodies.all(server);
+                ghost.body.Body body = bodies.isEmpty() ? null : bodies.get(0);
                 res.addProperty("ok", body != null);
-                if (body != null) {
+                res.addProperty("bodies", bodies.size());
+                if (body == null) {
+                    res.addProperty("error", "no live body in any dimension - "
+                            + "/ghost body here");
+                } else {
                     BlockPos bp = body.blockPosition();
                     res.add("pos", JsonParser.parseString(
                             "[" + bp.getX() + "," + bp.getY() + "," + bp.getZ() + "]"));
+                    res.addProperty("dimension",
+                            body.level().dimension().location().toString());
                     res.addProperty("navDone", body.getNavigation().isDone());
+                    res.addProperty("alive", body.isAlive());
+                    res.addProperty("id", body.getId());
+                    // What she is TRYING to do. Without this a position is not
+                    // diagnosable - a correct walk to a posting and an
+                    // unexplained drift look exactly the same from outside, and
+                    // every confusing movement tonight has been one or the other.
+                    BlockPos post = body.post();
+                    if (post != null) {
+                        res.addProperty("post", post.getX() + " " + post.getY()
+                                + " " + post.getZ());
+                        res.addProperty("stationed", body.stationed());
+                        double away = Math.sqrt(body.distanceToSqr(
+                                post.getX() + 0.5, post.getY(), post.getZ() + 0.5));
+                        res.addProperty("postDistance", Math.round(away));
+                        res.addProperty("doing", away <= 3.0
+                                ? "at her post"
+                                : "travelling to her post");
+                    } else if (body.followedId() != null) {
+                        res.addProperty("doing", "following a player");
+                    } else {
+                        res.addProperty("doing", "idle");
+                    }
+                    if (body.hovering()) {
+                        res.addProperty("hovering", true);
+                    }
+                    if (bodies.size() > 1) {
+                        StringBuilder others = new StringBuilder();
+                        for (ghost.body.Body b : bodies) {
+                            if (others.length() > 0) {
+                                others.append("; ");
+                            }
+                            others.append(b.level().dimension().location())
+                                  .append(" ").append(b.blockPosition().toShortString());
+                        }
+                        res.addProperty("warning", "there are " + bodies.size()
+                                + " bodies - verbs act on the first one found, "
+                                + "which may not be the one you can see. "
+                                + "/ghost body here in the dimension you want, "
+                                + "then /ghost body away in the other.");
+                        res.addProperty("allBodies", others.toString());
+                    }
                 }
             }
             case "say" -> {
@@ -1048,6 +1239,124 @@ public final class Bridge {
                 }
                 res.add("result", JsonParser.parseString(new Gson().toJson(done)));
                 res.addProperty("ok", Boolean.TRUE.equals(done.get("ok")));
+            }
+            case "withdraw", "deposit" -> {
+                // Moving real network stock, so gated like craft rather than
+                // like a read.
+                ServerPlayer who = requester(server, a);
+                if (!Perms.allows(who, Perms.Ability.CRAFT)) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "rank");
+                    res.addProperty("rank", Perms.rank(who));
+                    res.addProperty("detail", Perms.refusal(Perms.Ability.CRAFT));
+                    break;
+                }
+                ghost.body.Body body = ghost.body.Bodies.find(server);
+                if (body == null) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "no body - there is nothing to carry it in");
+                    break;
+                }
+                BlockPos at = a.has("at") ? pos(a, "at") : body.blockPosition();
+                int r = a.has("radius") ? a.get("radius").getAsInt() : 16;
+
+                net.minecraft.world.item.Item want = null;
+                if (a.has("item")) {
+                    ItemLookup.Result found = ItemLookup.resolve(a.get("item").getAsString());
+                    if (!found.ok()) {
+                        res.addProperty("ok", false);
+                        res.addProperty("error", found.error);
+                        if (!found.candidates.isEmpty()) {
+                            res.add("candidates", JsonParser.parseString(
+                                    new Gson().toJson(found.candidates)));
+                        }
+                        break;
+                    }
+                    want = found.item;
+                }
+
+                java.util.Map<String, Object> done;
+                if ("withdraw".equals(what)) {
+                    if (want == null) {
+                        res.addProperty("ok", false);
+                        res.addProperty("error", "withdraw needs \"item\" - "
+                                + "there is no sensible default for what to take out");
+                        break;
+                    }
+                    int count = a.has("count") ? a.get("count").getAsInt() : 1;
+                    done = Storage.withdraw(level, at, r, want, count, body.bag());
+                } else {
+                    // No item means everything carried, which is what "put this
+                    // lot away" should mean.
+                    done = Storage.deposit(level, at, r, want, body.bag());
+                }
+                res.add("result", JsonParser.parseString(new Gson().toJson(done)));
+                res.addProperty("ok", Boolean.TRUE.equals(done.get("ok")));
+            }
+            case "crouch", "jump" -> {
+                // Real body states, not flags on a request. She physically
+                // crouches or jumps, and the world gets to react to it the way
+                // it would for anyone else standing there.
+                ghost.body.Body body = ghost.body.Bodies.find(server);
+                if (body == null) {
+                    res.addProperty("ok", false);
+                    res.addProperty("error", "no body to move");
+                    break;
+                }
+                boolean up = "jump".equals(what);
+                if (up) {
+                    res.addProperty("jumped", body.hop());
+                } else {
+                    int ticks = a.has("ticks") ? a.get("ticks").getAsInt() : 20;
+                    body.crouchFor(ticks);
+                    res.addProperty("crouched", ticks);
+                }
+                res.addProperty("ok", true);
+
+                // Standing on an elevator? Then this means what it means for a
+                // player: jump for the floor above, crouch for the one below.
+                if (body.level() instanceof ServerLevel lvl) {
+                    BlockPos under = body.blockPosition().below();
+                    // Say WHICH of the two "no" cases this is.
+                    //
+                    // destination() returns null both when she is not on an
+                    // elevator and when she is on one with no floor that way,
+                    // and reporting nothing for both made a correct search look
+                    // like a broken one: a tester standing her exactly on a
+                    // confirmed elevator block got the identical empty result
+                    // they had been getting from being a block off.
+                    boolean onOne = Elevators.isElevator(lvl.getBlockState(under));
+                    res.addProperty("onElevator", onOne);
+                    BlockPos floor = onOne ? Elevators.destination(lvl, under, up) : null;
+                    if (onOne && floor == null) {
+                        res.addProperty("elevator", up ? "no floor above" : "no floor below");
+                        res.addProperty("note", "she is on "
+                                + net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                                        .getKey(lvl.getBlockState(under).getBlock())
+                                + " but there is no second elevator "
+                                + (up ? "above" : "below") + " it within "
+                                + Elevators.range() + " blocks. Try the other "
+                                + "direction: jump goes up, crouch goes down.");
+                    }
+                    if (floor != null) {
+                        BlockPos spot = Elevators.standingSpot(lvl, floor);
+                        if (spot == null) {
+                            res.addProperty("elevator", "blocked");
+                            res.addProperty("note", "there is an elevator "
+                                    + (up ? "above" : "below") + " but no room to "
+                                    + "stand on it");
+                        } else {
+                            body.teleportTo(spot.getX() + 0.5, spot.getY(),
+                                    spot.getZ() + 0.5);
+                            lvl.playSound(null, spot,
+                                    net.minecraft.sounds.SoundEvents.PLAYER_TELEPORT,
+                                    net.minecraft.sounds.SoundSource.BLOCKS, 0.4F, 1.0F);
+                            res.addProperty("elevator", "rode");
+                            res.addProperty("to", spot.getX() + " " + spot.getY()
+                                    + " " + spot.getZ());
+                        }
+                    }
+                }
             }
             case "slots" -> {
                 res.add("inventory", JsonParser.parseString(new Gson().toJson(
