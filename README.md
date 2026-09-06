@@ -357,11 +357,18 @@ Modrinth or CurseForge.
 **Verified by observation**, with a second agent session driving the bridge and a
 player watching: reads, travel and the action delay, the satchel round trip,
 `withdraw`/`deposit`, `goto`/`warp`, `crouch`/`jump`, the elevator ride
-(destination compared against a real player's own), and `clear` (checked by
-reading the blocks afterwards, not by trusting the count).
+(destination compared against a real player's own), `fill` on both its
+`onlyAir` branches, `clear`, and the break-for-drops path shared by `break`,
+`place` and `fill`. None of those were accepted on the returned counts - each
+was confirmed by reading the blocks and the dropped items back afterwards.
 
-**Not yet exercised:** `undo`, `fill`, the cross-dimension warp, the deadman
-check, and `place`'s break-for-drops path on a solid unprotected block.
+That discipline earned its keep. Two drop tests appeared to fail and did not:
+the items had fallen down an open shaft left by an earlier `clear`, and the
+entity scan's default radius could not see that far. The verbs were correct and
+the instrument was too small - which is exactly the confusion an ambiguous
+result creates, arriving this time in the test rather than the code.
+
+**Not yet exercised:** `undo`, the cross-dimension warp, and the deadman check.
 
 Worth knowing what shook out of that testing, because it is the honest shape of
 the project rather than the marketing: **eleven separate cases where a result
