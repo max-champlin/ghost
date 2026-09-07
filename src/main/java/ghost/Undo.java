@@ -127,6 +127,7 @@ final class Undo {
             return out;
         }
         int restored = 0;
+        int unchanged = 0;
         int failed = 0;
 
         // Lowest first. A door's lower half is back before its upper half looks
@@ -138,6 +139,14 @@ final class Undo {
         for (Map.Entry<BlockPos, Was> e : order) {
             try {
                 BlockPos p = e.getKey();
+                // Was this one actually disturbed? The snapshot deliberately
+                // records a shell around the job - blocks that might fall down
+                // when it runs, and usually do not. Putting those back is a
+                // no-op, and counting them made "restored" overstate the work:
+                // a nine-block job reported ten. The count has to mean the
+                // number of positions this call CHANGED, not the number it
+                // walked, or it is one more number that cannot be trusted.
+                boolean same = where.getBlockState(p).equals(e.getValue().state());
                 // UPDATE_CLIENTS | UPDATE_KNOWN_SHAPE. Tell the client, but do
                 // NOT let neighbours re-evaluate while the restore is half
                 // done. With a plain flag 3 the first torch goes back before
@@ -154,7 +163,11 @@ final class Undo {
                         be.setChanged();
                     }
                 }
-                restored++;
+                if (same) {
+                    unchanged++;
+                } else {
+                    restored++;
+                }
             } catch (Exception ex) {
                 failed++;
                 Ghost.LOG.warn("could not restore {}", e.getKey(), ex);
@@ -174,6 +187,11 @@ final class Undo {
         out.put("ok", restored > 0);
         out.put("undid", description);
         out.put("restored", restored);
+        if (unchanged > 0) {
+            out.put("unchanged", unchanged);
+            out.put("unchangedNote", "positions recorded in case they fell down "
+                    + "and did not - put back as they already were");
+        }
         if (failed > 0) {
             out.put("failed", failed);
         }

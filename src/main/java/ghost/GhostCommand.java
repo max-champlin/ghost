@@ -52,6 +52,28 @@ public final class GhostCommand {
                                         IntegerArgumentType.getInteger(ctx, "radius"),
                                         IntegerArgumentType.getInteger(ctx, "minutes"))))));
 
+        root.then(Commands.literal("produce")
+                .then(Commands.literal("off").executes(ctx -> {
+                    Throughput.stop();
+                    ctx.getSource().sendSuccess(() -> Component.literal(
+                            "Shelby: stopped watching production"), false);
+                    return 1;
+                }))
+                .then(Commands.argument("item",
+                        com.mojang.brigadier.arguments.StringArgumentType.string())
+                        .executes(ctx -> produce(ctx.getSource(),
+                                com.mojang.brigadier.arguments.StringArgumentType
+                                        .getString(ctx, "item"), 16, 10, 45))
+                        .then(Commands.argument("radius", IntegerArgumentType.integer(1, 64))
+                                .then(Commands.argument("everyMinutes", IntegerArgumentType.integer(1, 240))
+                                        .then(Commands.argument("quietMinutes", IntegerArgumentType.integer(1, 1440))
+                                                .executes(ctx -> produce(ctx.getSource(),
+                                                        com.mojang.brigadier.arguments.StringArgumentType
+                                                                .getString(ctx, "item"),
+                                                        IntegerArgumentType.getInteger(ctx, "radius"),
+                                                        IntegerArgumentType.getInteger(ctx, "everyMinutes"),
+                                                        IntegerArgumentType.getInteger(ctx, "quietMinutes"))))))));
+
         root.then(Commands.literal("have")
                 .then(Commands.argument("item", com.mojang.brigadier.arguments.StringArgumentType.string())
                         .executes(ctx -> have(ctx.getSource(),
@@ -120,7 +142,8 @@ public final class GhostCommand {
 
         root.then(Commands.literal("status").executes(ctx -> {
             ctx.getSource().sendSuccess(() -> Component.literal(
-                    "Shelby: " + Watch.status() + " | bridge " + Bridge.status()), false);
+                    "Shelby: " + Watch.status() + " | " + Throughput.status()
+                    + " | bridge " + Bridge.status()), false);
             return 1;
         }));
 
@@ -459,6 +482,38 @@ public final class GhostCommand {
             return 0;
         }
         return moved;
+    }
+
+    /**
+     * Watch a number that only goes up while the base is working.
+     *
+     * <p>Anchored on the player's position, because the ME network you mean is
+     * the one you are standing in - and asking for coordinates would be one
+     * more thing to get wrong at the moment you are trying to leave.
+     */
+    private static int produce(CommandSourceStack src, String item, int radius,
+                               int everyMinutes, int quietMinutes)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!Storage.ae2Loaded()) {
+            src.sendFailure(Component.literal(
+                    "Shelby: no AE2 here, so there is no network total to watch."));
+            return 0;
+        }
+        ItemLookup.Result found = ItemLookup.resolve(item);
+        if (!found.ok()) {
+            // Naming the near misses matters more here than anywhere: a typo
+            // would otherwise arm a monitor that watches nothing and stays
+            // silent, which reads exactly like everything being fine.
+            String detail = found.candidates.isEmpty() ? ""
+                    : " Did you mean: " + String.join(", ", found.candidates) + "?";
+            src.sendFailure(Component.literal("Shelby: " + found.error + detail));
+            return 0;
+        }
+        BlockPos p = BlockPos.containing(src.getPosition());
+        Throughput.start(src.getLevel(), p, radius, found.item, everyMinutes, quietMinutes);
+        src.sendSuccess(() -> Component.literal(
+                "Shelby: " + Throughput.status() + " -> ghost/alerts.jsonl"), false);
+        return 1;
     }
 
     private static int watch(CommandSourceStack src, int radius, int minutes) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

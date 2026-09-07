@@ -349,6 +349,64 @@ So instead:
 recall what the original action dropped. A mulligan, not a time machine —
 consequences stay real, they just stop being permanent.
 
+## Knowing when the base stops
+
+`/ghost produce <item> [radius] [everyMinutes] [quietMinutes]`
+
+Watches how much of one item has reached the ME network and says something when
+that number stops going up. Crops, golems, chests, pipes and machines all exist
+to move that total, so a flatline catches a break anywhere in the chain -
+including the parts nobody thought to instrument.
+
+```
+/ghost produce mysticalagriculture:inferium_essence 32 10 45
+```
+
+Sample every 10 minutes; if 45 minutes pass with no increase, alert. Defaults are
+radius 16, every 10, quiet 45. `/ghost produce off` stops it; `/ghost status`
+shows it.
+
+It alerts on the **transition**, not every sample, and says so again when the
+count recovers - an alert with no all-clear teaches you to ignore the next one.
+
+**What it cannot tell you**, stated because a monitor that overclaims is worse
+than none: this reads a total, not a production rate. A flat count means
+production stopped **or** you are consuming faster than you produce, and it
+cannot separate those. The alert says exactly that. It is built to make you look,
+not to be believed.
+
+### Getting the alert off the machine
+
+**The mod sends nothing itself.** No webhook, no SMTP, no API key in a config
+file for someone to leak. It appends one line to `ghost/alerts.jsonl`:
+
+```json
+{"at":"2026-09-07T08:20:11-04:00","alert":"flatline",
+ "item":"mysticalagriculture:inferium_essence","count":184320,"peak":184320,
+ "quietMinutes":47,"dimension":"minecraft:overworld","radius":32,
+ "meaning":"no increase seen - production stopped, OR consumption exceeds it."}
+```
+
+Delivery is whatever tails that file, and the choice is yours:
+
+- **A Claude session** driving the bridge already watches this directory. It can
+  push to your phone through your own account, with no credentials configured
+  anywhere. This is how the author runs it. The catch: it only fires while a
+  session or scheduled task is alive to see the line.
+- **[ntfy.sh](https://ntfy.sh)** - no account, no credentials. Pick a long random
+  topic, install the app, and tail the file:
+  `tail -F ghost/alerts.jsonl | while read l; do curl -d "$l" ntfy.sh/<topic>; done`.
+  Note the topic is readable by anyone who guesses it, so keep coordinates out of
+  what you send.
+- **A Discord webhook** - richer, and scrollable history. The URL is a shared
+  secret; keep it out of the repo.
+- **Anything else that reads a file.** That is the entire interface.
+
+Deliberately not built in: outbound network calls from the mod. A blocking send
+on the server thread stalls the tick, and a monitoring feature that costs you TPS
+is a bad trade. Doing it outside keeps the game loop clean and your secrets out
+of a Minecraft config.
+
 ## Status
 
 Working and in daily use on a 613-mod Minecraft 1.21.1 pack. Not yet released to
