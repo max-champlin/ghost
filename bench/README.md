@@ -20,15 +20,38 @@ fails even when the verb is right.
 
 ## Running it
 
+One model, one setup:
+
 ```bash
 ollama pull qwen2.5:3b
-python bench/run.py qwen2.5:3b                                  # flat schema
-GHOST_SCHEMA=actions.v2.schema.json python bench/run.py qwen2.5:3b   # per-verb
+python bench/run.py qwen2.5:3b                                       # as shipped
+GHOST_SCHEMA=actions.v2.schema.json python bench/run.py qwen2.5:3b   # per-verb args
+GHOST_SCHEMA=actions.v2.schema.json GHOST_VERBLIST=1 \
+    python bench/run.py qwen2.5:3b                                   # + glossary
 ```
 
-No Minecraft required — it is text in, JSON out, scored against a fixed key.
+The whole grid, which is what produced the table in the main README - `run.py`
+takes several models and works through them in order:
+
+```bash
+MODELS="qwen2.5:3b qwen2.5:7b qwen2.5:14b llama3.1:8b mistral:7b"
+python bench/run.py $MODELS
+GHOST_SCHEMA=actions.v2.schema.json python bench/run.py $MODELS
+GHOST_SCHEMA=actions.v2.schema.json GHOST_VERBLIST=1 python bench/run.py $MODELS
+python bench/update_readme.py     # regenerate the table from the result files
+```
+
+Budget roughly 3.5 minutes per 34-task run for a 3B on a mid-range CPU, 6 for a
+7-8B, 15-20 for a 14B. Nothing here needs a GPU, and nothing here needs
+Minecraft.
+
+**The three setups are the point.** `GHOST_SCHEMA` changes whether arguments are
+bound to their verb; `GHOST_VERBLIST` changes whether the model is told what the
+verbs mean. Between them they moved a 3B from 7/34 to 30/34 without touching the
+model, which is the finding this directory exists to support.
+
 `temperature 0` and a fixed seed, because a benchmark that changes between runs
-cannot be checked by anyone else.
+cannot be checked by anyone else. The 3B run was repeated and reproduced exactly.
 
 Every response is written to `results-<model>-<schema>.jsonl`, including the ones
 that passed. **Read those before believing the table.** A summary nobody can
@@ -46,8 +69,8 @@ should use it that way.
 
 ## Honest limits
 
-- **Two models, one family.** Qwen2.5 at 3B and 7B. Nothing here says how Llama,
-  Mistral or Phi behave, and the family may suit this task better or worse.
+- **Model coverage.** Qwen2.5 at 3B, 7B and 14B, plus Llama 3.1 8B and Mistral
+  7B. Nothing here says how Phi, Gemma or anything above 14B behaves.
 - **34 tasks.** One task is three percentage points. Treat single-task
   differences as noise.
 - **Single-turn.** A real session recovers from a bad first action; this does not
@@ -59,11 +82,12 @@ should use it that way.
 
 ## What it found
 
-Two things, and the second was the point.
+Three things. The third is the one worth taking somewhere else.
 
 **The old tier claims were wrong.** The README said a 1-3B model could handle
 literal lookups — `say`, `where`, `read`, `find`, `have`, `places`, `worn`, `bag`.
-Both models scored **0/8** on that tier against the shipped schema. The claim was
+Every model scored 0-2/8 on that tier against the shipped schema, and all five
+score **8/8** with both fixes applied. The claim was
 reasoned from what each step seemed to demand, never run, and stated with more
 confidence than it had earned.
 
@@ -91,3 +115,20 @@ drift stays invisible until someone benchmarks it.
 schema-to-GBNF converter, which Ollama uses, does not support `if`/`then`. It
 would have silently produced a weaker grammar. Checked by running it, not by
 reading the docs.
+
+**And the schema's descriptions never reached the model at all.**
+
+`actions.v2.schema.json` carries a `description` on every verb. Not one of them
+was ever seen. **llama.cpp compiles JSON Schema into a GBNF grammar, and a
+grammar encodes structure, not documentation** - descriptions are discarded on
+the way in. So every model was choosing among 34 opaque names (`bag`, `worn`,
+`slots`, `cells`, `places`) with no glossary.
+
+The giveaway was in the data before the cause was: all three Qwen sizes failed
+**the same eleven prompts**. Three models scoring alike is not a capability
+plateau, it is three models guessing blind. Putting those same descriptions into
+the system prompt - `GHOST_VERBLIST=1`, and the default in `drive.py` - is the
+largest single effect measured here, worth more than four times the parameters.
+
+If you take one thing from this directory: **schema `description` fields do
+nothing for a grammar-constrained model. Put them in the prompt.**
