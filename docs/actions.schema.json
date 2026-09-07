@@ -135,7 +135,8 @@
     },
     "dim": {
      "type": "string",
-     "description": "Dimension id, when not the overworld."
+     "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$",
+     "description": "Dimension id like minecraft:overworld or allthemodium:mining. Omit for wherever the player is."
     },
     "name": {
      "type": "string",
