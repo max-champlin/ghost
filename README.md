@@ -368,7 +368,28 @@ entity scan's default radius could not see that far. The verbs were correct and
 the instrument was too small - which is exactly the confusion an ambiguous
 result creates, arriving this time in the test rather than the code.
 
-**Not yet exercised:** `undo`, the cross-dimension warp, and the deadman check.
+`undo` has now been run too: its peek (`check: true`) reads without consuming,
+a second call honestly reports nothing left rather than inventing a success, a
+broken chest comes back **with its contents intact**, and breaking a block on
+the protection list goes through and says so in chat.
+
+The test that mattered was the awkward one. A cleared volume with a torch, a
+lever and a redstone torch standing in it came back reporting `restored: 10`
+with two of the three attachments missing. `undo` was not at fault - it restored
+every position it had been given. `clear` had never given it those two:
+`BlockPos.betweenClosed` walks y after x, so a support block is destroyed before
+whatever stands on it, and the torch above pops before the walk ever reaches its
+position. It was then counted as "already air". The number that looked routine
+was the loss. Fixed by snapshotting the whole box up front, and by reporting
+collateral as `collapsed` instead of folding it into `alreadyAir` - **fix not
+yet re-tested**.
+
+Worth recording which half of the process found what: three of the four real
+bugs here were found by reading the code, and this one only ever surfaced under
+a test built to be inconvenient. A chest alone passes it, and did.
+
+**Not yet exercised:** the cross-dimension warp, and the deadman check - whose
+two fixes have themselves never executed.
 
 Worth knowing what shook out of that testing, because it is the honest shape of
 the project rather than the marketing: **eleven separate cases where a result
