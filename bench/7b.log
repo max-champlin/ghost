@@ -1,0 +1,45 @@
+34 tasks x 1 model(s). Constrained decoding is ON, so invalid JSON is not what is being tested - verb choice is.
+
+== qwen2.5:7b
+   1 1-3B   PASS
+   2 1-3B   fail - chose 'post'
+   3 1-3B   fail - chose 'blockmap'
+   4 1-3B   fail - chose 'find'
+   5 1-3B   fail - chose 'say'
+   6 1-3B   fail - chose 'say'
+   7 1-3B   fail - chose 'slots'
+   8 1-3B   fail - missing block
+   9 7-8B   fail - missing at
+  10 7-8B   fail - chose 'wait'
+  11 7-8B   PASS
+  12 7-8B   fail - chose 'fill'
+  13 7-8B   PASS
+  14 7-8B   fail - chose 'find'
+  15 7-8B   fail - missing at
+  16 7-8B   fail - missing at
+  17 7-8B   PASS
+  18 7-8B   fail - chose 'put'
+  19 7-8B   fail - missing at
+  20 7-8B   PASS
+  21 7-8B   PASS
+  22 7-8B   PASS
+  23 7-8B   fail - chose 'put'
+  24 7-8B   PASS
+  25 14B+   PASS
+  26 14B+   PASS
+  27 14B+   fail - missing block
+  28 14B+   fail - chose 'fill'
+  29 14B+   PASS
+  30 14B+   fail - chose 'wait'
+  101 readback PASS
+  102 readback PASS
+  103 readback PASS
+  104 readback fail - chose 'have'
+  -> C:\Users\Max Champlin\sgb\ghost\bench\results-qwen2.5-7b.jsonl
+
+============================================================
+
+  qwen2.5:7b 1-3B 1/8  7-8B 7/16  14B+ 3/6  readback 3/4
+  overall: verb right 20/34, verb+args right 14/34, 545s total
+
+Every response is in the jsonl files. A table nobody can audit is just a claim with better formatting.

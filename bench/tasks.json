@@ -1,0 +1,427 @@
+{
+  "_about": "Fixed task set for measuring which model sizes can actually drive Ghost. The schema guarantees valid JSON at any size, so this does NOT test JSON validity - it tests whether the model picks the RIGHT verb and supplies sane arguments. 'accept' lists every verb a fair reader would call correct; where two are genuinely defensible both are listed, so the score is not punishing reasonable choices.",
+  "_scoring": "verb in accept = verb point. All keys in requires present = args point. Both = task passed.",
+  "tasks": [
+    {
+      "id": 1,
+      "tier": "1-3B",
+      "prompt": "Tell everyone in chat that the harvest is finished.",
+      "accept": [
+        "say"
+      ],
+      "requires": [
+        "text"
+      ]
+    },
+    {
+      "id": 2,
+      "tier": "1-3B",
+      "prompt": "Where are you right now?",
+      "accept": [
+        "where"
+      ],
+      "requires": []
+    },
+    {
+      "id": 3,
+      "tier": "1-3B",
+      "prompt": "What block is at 120 64 -30?",
+      "accept": [
+        "read"
+      ],
+      "requires": [
+        "at"
+      ]
+    },
+    {
+      "id": 4,
+      "tier": "1-3B",
+      "prompt": "How much iron ingot do we have nearby?",
+      "accept": [
+        "have"
+      ],
+      "requires": [
+        "item"
+      ]
+    },
+    {
+      "id": 5,
+      "tier": "1-3B",
+      "prompt": "List the places you know about.",
+      "accept": [
+        "places"
+      ],
+      "requires": []
+    },
+    {
+      "id": 6,
+      "tier": "1-3B",
+      "prompt": "What armour are you wearing?",
+      "accept": [
+        "worn"
+      ],
+      "requires": []
+    },
+    {
+      "id": 7,
+      "tier": "1-3B",
+      "prompt": "What is in your satchel?",
+      "accept": [
+        "bag"
+      ],
+      "requires": []
+    },
+    {
+      "id": 8,
+      "tier": "1-3B",
+      "prompt": "Find the nearest chest.",
+      "accept": [
+        "find"
+      ],
+      "requires": [
+        "block"
+      ]
+    },
+    {
+      "id": 9,
+      "tier": "7-8B",
+      "prompt": "Go to the garden.",
+      "accept": [
+        "goto"
+      ],
+      "requires": [
+        "at"
+      ]
+    },
+    {
+      "id": 10,
+      "tier": "7-8B",
+      "prompt": "Stay at 100 70 100 until I say otherwise.",
+      "accept": [
+        "post"
+      ],
+      "requires": [
+        "at"
+      ]
+    },
+    {
+      "id": 11,
+      "tier": "7-8B",
+      "prompt": "You can stop waiting there and come back.",
+      "accept": [
+        "return"
+      ],
+      "requires": []
+    },
+    {
+      "id": 12,
+      "tier": "7-8B",
+      "prompt": "What is inside the chest at 12 64 12?",
+      "accept": [
+        "slots"
+      ],
+      "requires": [
+        "at"
+      ]
+    },
+    {
+      "id": 13,
+      "tier": "7-8B",
+      "prompt": "Survey the blocks in the area around you.",
+      "accept": [
+        "scan",
+        "blockmap"
+      ],
+      "requires": []
+    },
+    {
+      "id": 14,
+      "tier": "7-8B",
+      "prompt": "What mobs are near the farm?",
+      "accept": [
+        "entities"
+      ],
+      "requires": []
+    },
+    {
+      "id": 15,
+      "tier": "7-8B",
+      "prompt": "Take 8 redstone out of the chest at 5 70 5, slot 3.",
+      "accept": [
+        "take"
+      ],
+      "requires": [
+        "at",
+        "slot"
+      ]
+    },
+    {
+      "id": 16,
+      "tier": "7-8B",
+      "prompt": "Put 12 coal from your bag into the chest at 5 70 5, slot 0.",
+      "accept": [
+        "put"
+      ],
+      "requires": [
+        "at",
+        "slot"
+      ]
+    },
+    {
+      "id": 17,
+      "tier": "7-8B",
+      "prompt": "Break the stone at 44 12 -8.",
+      "accept": [
+        "break"
+      ],
+      "requires": [
+        "at"
+      ]
+    },
+    {
+      "id": 18,
+      "tier": "7-8B",
+      "prompt": "Put a cobblestone block at 44 12 -8.",
+      "accept": [
+        "place"
+      ],
+      "requires": [
+        "at"
+      ]
+    },
+    {
+      "id": 19,
+      "tier": "7-8B",
+      "prompt": "Press the button at 3 65 3.",
+      "accept": [
+        "use"
+      ],
+      "requires": [
+        "at"
+      ]
+    },
+    {
+      "id": 20,
+      "tier": "7-8B",
+      "prompt": "Remember this spot as 'workshop'.",
+      "accept": [
+        "remember"
+      ],
+      "requires": [
+        "name"
+      ]
+    },
+    {
+      "id": 21,
+      "tier": "7-8B",
+      "prompt": "Forget the place called 'oldbase'.",
+      "accept": [
+        "forget"
+      ],
+      "requires": [
+        "name"
+      ]
+    },
+    {
+      "id": 22,
+      "tier": "7-8B",
+      "prompt": "Pull 16 gold ingots out of the ME system.",
+      "accept": [
+        "withdraw"
+      ],
+      "requires": [
+        "item"
+      ]
+    },
+    {
+      "id": 23,
+      "tier": "7-8B",
+      "prompt": "Put everything in your satchel into the ME system.",
+      "accept": [
+        "deposit"
+      ],
+      "requires": []
+    },
+    {
+      "id": 24,
+      "tier": "7-8B",
+      "prompt": "Craft 4 iron gears.",
+      "accept": [
+        "craft"
+      ],
+      "requires": [
+        "item"
+      ]
+    },
+    {
+      "id": 25,
+      "tier": "14B+",
+      "prompt": "Undo that, it was wrong.",
+      "accept": [
+        "undo"
+      ],
+      "requires": []
+    },
+    {
+      "id": 26,
+      "tier": "14B+",
+      "prompt": "Clear out the box between 10 60 10 and 14 63 14.",
+      "accept": [
+        "clear"
+      ],
+      "requires": [
+        "from",
+        "to"
+      ]
+    },
+    {
+      "id": 27,
+      "tier": "14B+",
+      "prompt": "Fill the box from 10 60 10 to 14 63 14 with dirt.",
+      "accept": [
+        "fill"
+      ],
+      "requires": [
+        "from",
+        "to",
+        "block"
+      ]
+    },
+    {
+      "id": 28,
+      "tier": "14B+",
+      "prompt": "How full are the ME storage cells?",
+      "accept": [
+        "cells"
+      ],
+      "requires": []
+    },
+    {
+      "id": 29,
+      "tier": "14B+",
+      "prompt": "Hold still and duck down for a moment.",
+      "accept": [
+        "crouch"
+      ],
+      "requires": []
+    },
+    {
+      "id": 30,
+      "tier": "14B+",
+      "prompt": "Wait until the block at 8 64 8 becomes water before doing anything else.",
+      "accept": [
+        "waitFor"
+      ],
+      "requires": []
+    }
+  ],
+  "readback": [
+    {
+      "id": 101,
+      "prompt": "You asked what was in the chest and got this result. Now take the diamonds out.",
+      "result": {
+        "action": "slots",
+        "ok": true,
+        "at": [
+          5,
+          70,
+          5
+        ],
+        "filled": 2,
+        "slots": [
+          {
+            "slot": 0,
+            "item": "minecraft:diamond",
+            "count": 9
+          },
+          {
+            "slot": 4,
+            "item": "minecraft:coal",
+            "count": 30
+          }
+        ]
+      },
+      "accept": [
+        "take"
+      ],
+      "requires": [
+        "at",
+        "slot"
+      ],
+      "expect_slot": 0,
+      "notes": "Must read slot 0 out of the result rather than guessing. This is the assistant-vs-parser line."
+    },
+    {
+      "id": 102,
+      "prompt": "That is the block you were asked about. If it is not air, break it.",
+      "result": {
+        "action": "read",
+        "ok": true,
+        "at": [
+          44,
+          12,
+          -8
+        ],
+        "block": "minecraft:stone"
+      },
+      "accept": [
+        "break"
+      ],
+      "requires": [
+        "at"
+      ],
+      "notes": "Conditional on the result's content."
+    },
+    {
+      "id": 103,
+      "prompt": "Here is what you found. Go to it.",
+      "result": {
+        "action": "find",
+        "ok": true,
+        "block": "minecraft:chest",
+        "found": [
+          {
+            "at": [
+              88,
+              61,
+              -12
+            ],
+            "distance": 14
+          }
+        ]
+      },
+      "accept": [
+        "goto"
+      ],
+      "requires": [
+        "at"
+      ],
+      "expect_at": [
+        88,
+        61,
+        -12
+      ],
+      "notes": "Must lift coordinates out of a nested result."
+    },
+    {
+      "id": 104,
+      "prompt": "That is what the network holds. We need 64; get the rest of what is missing.",
+      "result": {
+        "action": "have",
+        "ok": true,
+        "item": "minecraft:gold_ingot",
+        "inNetwork": 40,
+        "onFloor": 0
+      },
+      "accept": [
+        "withdraw",
+        "craft"
+      ],
+      "requires": [
+        "item"
+      ],
+      "notes": "Requires arithmetic on the result (64-40=24), not just verb choice."
+    }
+  ],
+  "_schema_note": "Run against docs/actions.schema.json AFTER the 2026-09-07 argument fix. Before it, the schema declared 18 arguments and Bridge read 31; thirteen - including sneak, onlyAir, slot and name - could not be expressed by a schema-driven model at all. Benchmarking against the old schema would have measured that gap and blamed the models."
+}

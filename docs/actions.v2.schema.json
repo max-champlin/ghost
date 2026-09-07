@@ -1,0 +1,1287 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "title": "Ghost inbox (per-verb)",
+ "description": "Same contract as actions.schema.json, but every verb carries only its own arguments. The flat version guaranteed the JSON parsed and left the model free to put a position in `block` or a destination in `to`; this makes those ungrammatical. oneOf rather than if/then because llama.cpp's schema-to-GBNF converter, which Ollama uses, does not support if/then.",
+ "type": "array",
+ "minItems": 1,
+ "maxItems": 256,
+ "items": {
+  "$ref": "#/$defs/action"
+ },
+ "$defs": {
+  "pos": {
+   "type": "array",
+   "description": "A block position, [x, y, z].",
+   "items": {
+    "type": "integer"
+   },
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "action": {
+   "oneOf": [
+    {
+     "title": "say",
+     "description": "Speak a line in chat.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "say"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "keepPending": {
+       "type": "boolean",
+       "description": "For say: leave the player's outstanding questions marked unanswered instead of clearing them."
+      },
+      "text": {
+       "type": "string",
+       "description": "say: what to speak in chat."
+      }
+     },
+     "required": [
+      "do",
+      "text"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "scan",
+     "description": "Summarise the blocks in a region as counts.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "scan"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "detail": {
+       "type": "boolean",
+       "description": "For entities: full per-entity rows including saved NBT, rather than counts."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "from": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: one corner."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "to": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: the other corner."
+      }
+     },
+     "required": [
+      "do",
+      "from",
+      "to"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "blockmap",
+     "description": "A detailed block census of a region.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "blockmap"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "from": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: one corner."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "match": {
+       "type": "array",
+       "description": "blockmap: substrings to bucket by, e.g. [\"ae2:\", \"mekanism:\"].",
+       "items": {
+        "type": "string"
+       }
+      },
+      "nbt": {
+       "type": "boolean",
+       "description": "blockmap: also read each block entity's configuration (filters, per-face routing)."
+      },
+      "to": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: the other corner."
+      }
+     },
+     "required": [
+      "do",
+      "from",
+      "to"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "find",
+     "description": "Locate the nearest block of a given kind.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "find"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "block": {
+       "type": "string",
+       "description": "find: substring of a block id."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "radius": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 64
+      }
+     },
+     "required": [
+      "do",
+      "block"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "read",
+     "description": "Report the single block at one position.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "read"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do",
+      "at"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "entities",
+     "description": "Report mobs, players and dropped items nearby.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "entities"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "detail": {
+       "type": "boolean",
+       "description": "For entities: full per-entity rows including saved NBT, rather than counts."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "radius": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 64
+      },
+      "type": {
+       "type": "string",
+       "description": "For entities: only report entity ids containing this substring."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "have",
+     "description": "Count how much of an item is nearby or in the ME network.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "have"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      },
+      "radius": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 64
+      }
+     },
+     "required": [
+      "do",
+      "item"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "craft",
+     "description": "Ask the ME network to craft an item.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "craft"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "check": {
+       "type": "boolean",
+       "description": "craft: plan it and report what is missing, taking nothing. Use this before any large build."
+      },
+      "count": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "craft: how many."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      },
+      "radius": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 64
+      }
+     },
+     "required": [
+      "do",
+      "item"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "where",
+     "description": "Report her own position, dimension and what she is doing.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "where"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "goto",
+     "description": "Travel to a position, optionally teleporting.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "goto"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "warp": {
+       "type": "boolean",
+       "description": "goto: teleport rather than walk."
+      }
+     },
+     "required": [
+      "do",
+      "at"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "post",
+     "description": "Station her at a position until released.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "post"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "return",
+     "description": "Release a post and stop waiting there.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "return"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "break",
+     "description": "Break the block at one position.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "break"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "drop": {
+       "type": "boolean",
+       "description": "For clear: whether the blocks yield their items, as breaking them would."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do",
+      "at"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "place",
+     "description": "Place a block at one position.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "place"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "block": {
+       "type": "string",
+       "description": "find: substring of a block id."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      }
+     },
+     "required": [
+      "do",
+      "at"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "use",
+     "description": "Right-click the block at one position.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "use"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "face": {
+       "type": "string",
+       "enum": [
+        "up",
+        "down",
+        "north",
+        "south",
+        "east",
+        "west"
+       ],
+       "description": "Which face to click, for use. Defaults to up."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "sneak": {
+       "type": "boolean",
+       "description": "Crouch while using the block. Many blocks put a second action behind a sneak-click; without this that half is unreachable."
+      }
+     },
+     "required": [
+      "do",
+      "at"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "command",
+     "description": "Run a server command.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "command"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "cmd": {
+       "type": "string",
+       "description": "command: a server command. Output goes to logs/latest.log, NOT the outbox."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do",
+      "cmd"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "wait",
+     "description": "Pause for a number of ticks.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "wait"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "ticks": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "wait: how long."
+      }
+     },
+     "required": [
+      "do",
+      "ticks"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "waitFor",
+     "description": "Pause until a condition holds.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "waitFor"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "timeout": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "For waitFor: ticks to wait before giving up. Defaults to 1200 (one minute)."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "remember",
+     "description": "Save a named place.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "remember"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "from": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: one corner."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "name": {
+       "type": "string",
+       "description": "The place name, for remember/forget. REQUIRED by both - omitting it is a hard failure, not a default."
+      },
+      "note": {
+       "type": "string",
+       "description": "Free text recorded with a remembered place."
+      },
+      "to": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: the other corner."
+      }
+     },
+     "required": [
+      "do",
+      "name"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "forget",
+     "description": "Delete a named place.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "forget"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "name": {
+       "type": "string",
+       "description": "The place name, for remember/forget. REQUIRED by both - omitting it is a hard failure, not a default."
+      }
+     },
+     "required": [
+      "do",
+      "name"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "places",
+     "description": "List every remembered place.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "places"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "cells",
+     "description": "Report ME storage cell usage.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "cells"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      },
+      "radius": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 64
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "slots",
+     "description": "List the contents of a container, slot by slot.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "slots"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do",
+      "at"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "bag",
+     "description": "List what is in her satchel.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "bag"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "worn",
+     "description": "Report the armour she is wearing.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "worn"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "take",
+     "description": "Move items from a container slot into her satchel.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "take"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "count": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "craft: how many."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      },
+      "slot": {
+       "type": "integer",
+       "minimum": 0,
+       "description": "Which slot of the container, for take/put. Defaults to 0 when absent, so leaving it out acts on the FIRST slot rather than erroring - name it."
+      }
+     },
+     "required": [
+      "do",
+      "at"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "put",
+     "description": "Move items from her satchel into a container slot.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "put"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "count": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "craft: how many."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      },
+      "slot": {
+       "type": "integer",
+       "minimum": 0,
+       "description": "Which slot of the container, for take/put. Defaults to 0 when absent, so leaving it out acts on the FIRST slot rather than erroring - name it."
+      }
+     },
+     "required": [
+      "do",
+      "at"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "fill",
+     "description": "Fill a box with one kind of block.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "fill"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "block": {
+       "type": "string",
+       "description": "find: substring of a block id."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "drop": {
+       "type": "boolean",
+       "description": "For clear: whether the blocks yield their items, as breaking them would."
+      },
+      "from": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: one corner."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      },
+      "onlyAir": {
+       "type": "boolean",
+       "description": "For fill: only place into air, leaving existing blocks alone. False overwrites - and breaks what was there."
+      },
+      "to": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: the other corner."
+      }
+     },
+     "required": [
+      "do",
+      "from",
+      "to"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "clear",
+     "description": "Empty a box of blocks.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "clear"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "block": {
+       "type": "string",
+       "description": "find: substring of a block id."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "drop": {
+       "type": "boolean",
+       "description": "For clear: whether the blocks yield their items, as breaking them would."
+      },
+      "from": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: one corner."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      },
+      "onlyAir": {
+       "type": "boolean",
+       "description": "For fill: only place into air, leaving existing blocks alone. False overwrites - and breaks what was there."
+      },
+      "to": {
+       "$ref": "#/$defs/pos",
+       "description": "scan/blockmap: the other corner."
+      }
+     },
+     "required": [
+      "do",
+      "from",
+      "to"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "withdraw",
+     "description": "Pull items out of the ME network into her satchel.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "withdraw"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "count": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "craft: how many."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      },
+      "radius": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 64
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "deposit",
+     "description": "Push items from her satchel into the ME network.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "deposit"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "count": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "craft: how many."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "item": {
+       "type": "string",
+       "description": "have/craft: a full item id, e.g. minecraft:redstone."
+      },
+      "radius": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 64
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "crouch",
+     "description": "Crouch for a moment.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "crouch"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "ticks": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "wait: how long."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "jump",
+     "description": "Jump.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "jump"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "ticks": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "wait: how long."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "title": "undo",
+     "description": "Take back the last destructive action.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "undo"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "check": {
+       "type": "boolean",
+       "description": "craft: plan it and report what is missing, taking nothing. Use this before any large build."
+      },
+      "dim": {
+       "type": "string",
+       "description": "Dimension id, when not the overworld."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    }
+   ]
+  }
+ }
+}

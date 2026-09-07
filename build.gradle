@@ -76,7 +76,31 @@ tasks.register('checkVerbs') {
                 (extra   ? "  in the schema but NOT handled (a model will ask and get 'unknown action'): ${extra.join(', ')}\n" : '') +
                 "  update the enum in \$defs.action.properties.do")
         }
-        logger.lifecycle("checkVerbs: schema and Bridge agree on ${handled.size()} verbs")
+        // Verbs were guarded from the start; ARGUMENTS were not, and drifted
+        // badly. Thirteen of them - including sneak, onlyAir, slot and name -
+        // were read by Bridge and absent from the schema, so a model driven by
+        // that schema could not express them at all. Two failed loudly and the
+        // rest failed silently by falling back to a default, which is worse.
+        // Found only when someone finally tried to benchmark a local model.
+        def argsUsed = new TreeSet<String>()
+        bridgeFile.eachLine { line ->
+            def m = line =~ /a\.(?:has|get|getAsJsonArray|getAsJsonObject)\("([A-Za-z_]+)"\)/
+            while (m.find()) { argsUsed << m.group(1) }
+        }
+        // Leading underscore marks bridge-internal bookkeeping a caller never sends.
+        argsUsed.removeAll { it.startsWith('_') }
+        def argsDeclared = new TreeSet(json['$defs'].action.properties.keySet())
+        def argsMissing = argsUsed - argsDeclared
+        if (argsMissing) {
+            throw new GradleException(
+                'docs/actions.schema.json is missing arguments Bridge.java reads' + '\n' +
+                '  read but NOT declared (a schema-driven model cannot send these): ' +
+                argsMissing.join(', ') + '\n' +
+                '  add them to $defs.action.properties - a missing argument does not' + '\n' +
+                '  fail loudly, it silently takes the default and reports success')
+        }
+        logger.lifecycle("checkVerbs: schema and Bridge agree on ${handled.size()} verbs " +
+                         "and ${argsUsed.size()} arguments")
     }
 }
 
