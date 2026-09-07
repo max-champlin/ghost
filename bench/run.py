@@ -33,6 +33,34 @@ SYSTEM = (
 )
 
 
+def glossary():
+    """
+    The verb list, as prose for the PROMPT.
+
+    The v2 schema carries a description on every branch and the model never
+    sees one: llama.cpp compiles JSON Schema to a GBNF grammar, and a grammar
+    encodes structure, not documentation. Every description is discarded on the
+    way in. So all three model sizes were choosing among 34 opaque names -
+    `bag`, `worn`, `slots`, `cells`, `places` - with no glossary, which is why
+    they failed the SAME eleven prompts regardless of size.
+
+    Set GHOST_VERBLIST=1 to put the descriptions where the model can actually
+    read them.
+    """
+    if os.environ.get("GHOST_VERBLIST") != "1":
+        return ""
+    p = os.path.join(HERE, os.pardir, "docs", "actions.v2.schema.json")
+    with open(p, encoding="utf-8") as f:
+        branches = json.load(f)["$defs"]["action"]["oneOf"]
+    lines = ["", "The verbs, and what each one is for:"]
+    for b in branches:
+        req = [r for r in b.get("required", []) if r != "do"]
+        lines.append("  %-9s %s%s" % (
+            b["title"], b.get("description", ""),
+            (" (needs %s)" % ", ".join(req)) if req else ""))
+    return chr(10).join(lines)
+
+
 def load():
     with open(os.path.join(HERE, "tasks.json"), encoding="utf-8") as f:
         return json.load(f)
@@ -128,12 +156,15 @@ def run(model, data, fmt):
     # comparison it existed to make. Caught after it had already happened once.
     tag = os.environ.get("GHOST_SCHEMA", "actions.schema.json")
     tag = "flat" if tag == "actions.schema.json" else "perverb"
+    if os.environ.get("GHOST_VERBLIST") == "1":
+        tag += "-glossary"
     out = os.path.join(HERE, "results-%s-%s.jsonl"
                        % (model.replace(":", "-").replace("/", "-"), tag))
     with open(out, "w", encoding="utf-8") as f:
         for task in data["tasks"]:
             msgs = [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": task["prompt"]}]
+            msgs[0]["content"] += glossary()
             obj, raw, took = ask(model, msgs, fmt)
             vo, ao, note = score_one(task, obj)
             row = {"id": task["id"], "tier": task["tier"], "kind": "select",

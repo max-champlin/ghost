@@ -20,10 +20,12 @@ def load():
     out = {}
     for path in sorted(glob.glob(os.path.join(HERE, "results-*.jsonl"))):
         base = os.path.basename(path)[len("results-"):-len(".jsonl")]
-        if base.endswith("-flat"):
-            model, schema = base[:-5], "flat"
-        elif base.endswith("-perverb"):
-            model, schema = base[:-8], "per-verb"
+        for suffix, label in (("-perverb-glossary", "per-verb + glossary"),
+                              ("-perverb", "per-verb"),
+                              ("-flat", "flat (as shipped)")):
+            if base.endswith(suffix):
+                model, schema = base[:-len(suffix)], label
+                break
         else:
             continue
         rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
@@ -48,7 +50,7 @@ def main():
           " | ".join(TIERS) + " |")
     print("|---|---|---|---|" + "---|" * len(TIERS))
     for m in models:
-        for s in ("flat", "per-verb"):
+        for s in ("flat (as shipped)", "per-verb", "per-verb + glossary"):
             rows = data.get((m, s))
             if not rows:
                 continue
@@ -60,16 +62,16 @@ def main():
 
     print()
     for m in models:
-        f, p = data.get((m, "flat")), data.get((m, "per-verb"))
-        if not (f and p):
+        f = data.get((m, "flat (as shipped)"))
+        p = data.get((m, "per-verb"))
+        g = data.get((m, "per-verb + glossary"))
+        if not (f and p and g):
             continue
         fo, n = tally(f)
         po, _ = tally(p)
-        fv = sum(1 for r in f if r["verb_ok"])
-        pv = sum(1 for r in p if r["verb_ok"])
-        print("%s: complete actions %d/%d -> %d/%d; verb choice %d -> %d "
-              "(argument errors %d -> %d)"
-              % (m, fo, n, po, n, fv, pv, fv - fo, pv - po))
+        go, _ = tally(g)
+        print("- `%s`: %d/%d as shipped -> %d/%d with per-verb arguments -> "
+              "**%d/%d** with the glossary in the prompt" % (m, fo, n, po, n, go, n))
 
 
 if __name__ == "__main__":

@@ -18,9 +18,10 @@ One-shot, without touching the game:
 
     python drive.py --ghost ... --once "how much inferium is in the network?"
 
-**Use the per-verb schema.** It is the default here for the reason the README
-documents: measured on the same 34 tasks, it cut the 3B's argument errors from
-ten to zero, and a 3B on it beat a 7B without it.
+Defaults chosen from measurement, not taste: the per-verb schema, and the verb
+glossary in the system prompt. Together those took qwen2.5:3b from 7/34 to 30/34
+on the same tasks - past a 14B running the setup this repo used to ship. See
+bench/ for the numbers and the raw responses.
 """
 import argparse
 import json
@@ -43,6 +44,28 @@ Rules that matter:
 - After a result comes back, ANSWER THE PERSON with `say`. A result nobody is
   told about is not an answer.
 - Prefer one action at a time. You will see the result before the next step."""
+
+
+def glossary(schema):
+    """
+    The verb list as prose, for the system prompt.
+
+    The schema carries a description on every verb and the model never sees one:
+    llama.cpp compiles JSON Schema into a GBNF grammar, and a grammar encodes
+    structure, not documentation. Measured, moving these same descriptions into
+    the prompt took qwen2.5:3b from 17/34 to 30/34 - the single largest effect in
+    bench/. Without it the model is choosing among 34 opaque names.
+    """
+    branches = schema.get("$defs", {}).get("action", {}).get("oneOf")
+    if not branches:
+        return ""                      # flat schema: nothing per-verb to say
+    lines = ["", "The verbs, and what each one is for:"]
+    for b in branches:
+        req = [r for r in b.get("required", []) if r != "do"]
+        lines.append("  %-9s %s%s" % (
+            b.get("title", "?"), b.get("description", ""),
+            (" (needs %s)" % ", ".join(req)) if req else ""))
+    return chr(10).join(lines)
 
 
 def post(url, payload, timeout=600):
@@ -98,7 +121,7 @@ def send(ghost, actions, timeout=120):
 
 def turn(host, model, schema, ghost, request, steps=4):
     """One request, carried through until the model has answered."""
-    messages = [{"role": "system", "content": SYSTEM},
+    messages = [{"role": "system", "content": SYSTEM + glossary(schema)},
                 {"role": "user", "content": request}]
     for step in range(steps):
         actions = think(host, model, schema, messages)
