@@ -59,6 +59,63 @@ final class Bulk {
     /** How many distinct protected blocks to name back before summarising. */
     private static final int MAX_NAMED = 12;
 
+    /**
+     * Snapshot the whole job BEFORE changing any of it.
+     *
+     * <p>Recording each block as we destroy it looks equivalent and is not.
+     * {@link BlockPos#betweenClosed} walks x fastest and y next, so a support
+     * block is reached before whatever stands on top of it - and destroying the
+     * support pops the torch above immediately. By the time the walk arrives at
+     * the torch's own position it is already air, so it was never recorded, and
+     * undo could not put it back. It was then counted as "already air", which
+     * hid the whole thing behind a number that looked fine.
+     *
+     * <p>Found the honest way, 2026-09-06: a cleared volume of stone with a
+     * torch, a lever and a redstone torch on it came back with
+     * {@code restored: 10} and two of the three attachments missing. The lever
+     * survived only because its support happened to sit later in the walk.
+     *
+     * <p>Also records a one-block shell around the box, filtered to blocks that
+     * are not full cubes. A torch on the OUTSIDE face of a wall being cleared
+     * pops for the same reason, and it is the non-full blocks - torches,
+     * levers, buttons, signs, ladders, rails, dust - that hang on their
+     * neighbours. Full blocks are left out because a solid shell would be
+     * thousands of pointless records. Falling blocks resting on top of the box
+     * are a known gap: sand above a cleared volume comes down and is not
+     * tracked.
+     *
+     * @return how many positions inside the box were air before we started -
+     *         the honest count, as opposed to what is air once we are underway
+     */
+    private static int snapshot(ServerLevel level, BlockPos from, BlockPos to) {
+        int wasAir = 0;
+        for (BlockPos p : BlockPos.betweenClosed(from, to)) {
+            if (level.getBlockState(p).isAir()) {
+                wasAir++;
+                continue;
+            }
+            Undo.record(level, p);
+        }
+
+        BlockPos lo = new BlockPos(Math.min(from.getX(), to.getX()),
+                Math.min(from.getY(), to.getY()), Math.min(from.getZ(), to.getZ()));
+        BlockPos hi = new BlockPos(Math.max(from.getX(), to.getX()),
+                Math.max(from.getY(), to.getY()), Math.max(from.getZ(), to.getZ()));
+        for (BlockPos p : BlockPos.betweenClosed(lo.offset(-1, -1, -1), hi.offset(1, 1, 1))) {
+            if (p.getX() >= lo.getX() && p.getX() <= hi.getX()
+                    && p.getY() >= lo.getY() && p.getY() <= hi.getY()
+                    && p.getZ() >= lo.getZ() && p.getZ() <= hi.getZ()) {
+                continue;                       // inside the box, already done
+            }
+            BlockState st = level.getBlockState(p);
+            if (st.isAir() || st.isCollisionShapeFullBlock(level, p)) {
+                continue;
+            }
+            Undo.record(level, p);
+        }
+        return wasAir;
+    }
+
     /** The box, clamped, or null when it is bigger than the cap. */
     private static long volume(BlockPos a, BlockPos b) {
         long dx = Math.abs(a.getX() - b.getX()) + 1L;
@@ -89,15 +146,16 @@ final class Bulk {
             return tooBig(size);
         }
         Undo.begin(level, "clear " + size + " blocks");
+        int alreadyAir = snapshot(level, from, to);
         int cleared = 0;
-        int alreadyAir = 0;
         List<String> refusedNames = new ArrayList<>();
         int refused = 0;
 
         for (BlockPos p : BlockPos.betweenClosed(from, to)) {
             BlockState st = level.getBlockState(p);
             if (st.isAir()) {
-                alreadyAir++;
+                // Either air before we started, or something we knocked down
+                // on the way. Both are counted from the snapshot, not here.
                 continue;
             }
             if (st.is(DENY)) {
@@ -110,7 +168,6 @@ final class Bulk {
             }
             // immutable(): betweenClosed hands back one mutable cursor, and
             // destroyBlock can run long enough for it to have moved on.
-            Undo.record(level, p);
             if (level.destroyBlock(p.immutable(), drop)) {
                 cleared++;
             }
@@ -120,6 +177,16 @@ final class Bulk {
         out.put("cleared", cleared);
         out.put("alreadyAir", alreadyAir);
         out.put("scanned", size);
+        // Anything that went to air without us breaking it: an attachment
+        // whose support we took first. Named rather than folded into
+        // alreadyAir, because "I did not touch it" and "it fell down because
+        // of me" are different answers and the caller deserves the second one.
+        long collateral = size - alreadyAir - cleared - refused;
+        if (collateral > 0) {
+            out.put("collapsed", collateral);
+            out.put("collapsedNote", "came down when their support went; "
+                    + "recorded before the job started, so undo restores them");
+        }
         if (refused > 0) {
             out.put("refused", refused);
             out.put("refusedKinds", refusedNames);
@@ -142,6 +209,8 @@ final class Bulk {
         }
         Undo.begin(level, "fill " + size + " with "
                 + BuiltInRegistries.BLOCK.getKey(what));
+        // Same reasoning as clear: filling destroys, and destroying collapses.
+        snapshot(level, from, to);
         BlockState want = what.defaultBlockState();
         int placed = 0;
         int skipped = 0;
@@ -168,7 +237,6 @@ final class Bulk {
                 skipped++;
                 continue;
             }
-            Undo.record(level, p);
             if (!st.isAir() && what != Blocks.AIR) {
                 // Break it first so it drops rather than being annihilated.
                 level.destroyBlock(p.immutable(), true);

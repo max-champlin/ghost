@@ -44,8 +44,15 @@ final class Undo {
     private record Was(BlockState state, CompoundTag data) {
     }
 
-    /** Matches the fill/clear cap: nothing can record more than it can change. */
-    private static final int MAX = 4096;
+    /**
+     * Room for a full-size job AND the shell around it.
+     *
+     * <p>fill/clear cap the box at 4096, but the snapshot also records the
+     * blocks just outside that would fall down when it goes. Sizing this at the
+     * box alone meant a solid 16x16x16 used the entire budget and silently
+     * dropped every one of its own attachments.
+     */
+    private static final int MAX = 8192;
 
     private static ServerLevel where;
     private static String description = "";
