@@ -30,7 +30,11 @@ def load():
             continue
         rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
         if rows:
-            out[(model.replace("qwen2.5-", "qwen2.5:"), schema)] = rows
+            # run.py writes ':' as '-' in filenames; put it back on the LAST
+            # hyphen so llama3.1-8b and mistral-7b come back correctly too,
+            # rather than only the family this was first written against.
+            name = model.rsplit("-", 1)
+            out[(":".join(name) if len(name) == 2 else model, schema)] = rows
     return out
 
 

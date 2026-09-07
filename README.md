@@ -271,21 +271,32 @@ rather than luck. The agent is handed one situation at a time and answers with
 one list of actions - it is not holding a long tool-calling conversation, so the
 context never grows the way an agent loop's does.
 
-Measured on a live 615-mod instance:
+Measured: the system prompt from `drive.py`, and **527 real results** taken from
+one instance's `ghost/outbox.jsonl` rather than estimated.
 
 | what the model holds | tokens |
 |---|---|
-| the operating briefing (system prompt) | ~1,600 |
-| an incoming question from chat | ~50 |
-| a typical result to interpret | 150-650 |
-| the JSON action it writes back | ~50 |
-| **a normal turn, end to end** | **~2,500-3,000** |
+| system prompt + 34-verb glossary (`drive.py`) | ~630 |
+| an incoming question from chat | ~15 |
+| a result to interpret - median | **37** |
+| the same, 90th percentile | 79 |
+| the JSON action it writes back | ~30 |
+| **a normal turn, end to end** | **~750** |
 
-So a **4k context window is enough** for ordinary work: answering questions,
-running scans, reporting what is in a container, crafting. The exception is a
-`blockmap` with `nbt` over a whole base, which can reach 25k tokens - either
-give that one a large-context model or filter the JSON before it reaches the
-prompt.
+So a **2k context window is enough** for ordinary work, and 4k is comfortable.
+Results are far smaller than they look: half are under 40 tokens, because most
+verbs answer with a number or a short list.
+
+The tail is what needs care, not the median. The largest single result in those
+527 was **2,654 tokens** - a `find` across a large area - and `slots` on a full
+storage container reached 2,535. A `blockmap` with `nbt` over a whole base is
+worse again. Give those a larger-context model, narrow the radius, or filter the
+JSON before it reaches the prompt.
+
+An earlier version of this table said ~1,600 tokens for the briefing and
+150-650 per result. Both were wrong: the briefing it described has since grown to
+~3,700 tokens, and real results are roughly an order of magnitude smaller than
+the range quoted. The numbers above come from counting.
 
 ### The part that actually decides whether a small model works
 
