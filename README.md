@@ -505,6 +505,13 @@ shows it.
 It alerts on the **transition**, not every sample, and says so again when the
 count recovers - an alert with no all-clear teaches you to ignore the next one.
 
+**It refuses to arm on an item the network does not currently hold.** Found the
+useful way: inferium essence reads 0 in the base it was written for, at all
+times, because the system converts it upward the moment it arrives. A monitor on
+that number would have alerted inside the hour on a perfectly healthy garden.
+Watch what the thing *becomes*, not what passes through - the number that only
+goes up.
+
 **What it cannot tell you**, stated because a monitor that overclaims is worse
 than none: this reads a total, not a production rate. A flat count means
 production stopped **or** you are consuming faster than you produce, and it
@@ -582,8 +589,20 @@ Worth recording which half of the process found what: three of the four real
 bugs here were found by reading the code, and this one only ever surfaced under
 a test built to be inconvenient. A chest alone passes it, and did.
 
-**Not yet exercised:** the cross-dimension warp, and the deadman check - whose
-two fixes have themselves never executed.
+**Verified against a live world since:** the cross-dimension warp (real crossing,
+arrival confirmed by a follow-up `where` rather than asserted), and the whole
+local-model loop end to end - `drive.py` driving `llama3.1:8b` on a home CPU,
+through a real request, a real result, and an answer spoken in chat.
+
+That first live run immediately found a bug 510 scored benchmark responses had
+missed: the model emitted `dim` as `"0"`, because `dim` was typed as a bare
+string and the description explaining the real format never reaches a
+grammar-constrained model. None of the 34 benchmark tasks names a dimension, so
+the argument was never exercised. A green benchmark is not coverage.
+
+**Not yet exercised:** `/ghost produce` end to end (armed and disarmed, never
+left running long enough to alert), and the deadman check - whose two fixes have
+themselves never executed.
 
 Worth knowing what shook out of that testing, because it is the honest shape of
 the project rather than the marketing: **eleven separate cases where a result

@@ -510,6 +510,25 @@ public final class GhostCommand {
             return 0;
         }
         BlockPos p = BlockPos.containing(src.getPosition());
+        // Refuse to watch a number that is already zero.
+        //
+        // A monitor armed on an item the network never holds cannot tell
+        // "production stopped" from "this was never the right item" - it just
+        // waits out the quiet window and cries wolf. Nearly happened here:
+        // inferium essence reads 0 in this base at all times because the system
+        // converts it upward on arrival, so watching it would have alerted
+        // within the hour on a perfectly healthy garden. Watch the thing that
+        // accumulates.
+        long now = Storage.inNetworks(src.getLevel(), p, radius, found.item);
+        if (now == 0) {
+            src.sendFailure(Component.literal(
+                    "Shelby: there is no " + found.id + " in reach of "
+                    + p.getX() + " " + p.getY() + " " + p.getZ() + " (radius "
+                    + radius + "), so a flatline there would mean nothing. If it "
+                    + "is consumed as fast as it arrives, watch what it becomes "
+                    + "instead - that is the number that only goes up."));
+            return 0;
+        }
         Throughput.start(src.getLevel(), p, radius, found.item, everyMinutes, quietMinutes);
         src.sendSuccess(() -> Component.literal(
                 "Shelby: " + Throughput.status() + " -> ghost/alerts.jsonl"), false);

@@ -767,15 +767,70 @@ public final class Bridge {
                 res.addProperty("ticks", waitTicks);
             }
             case "command" -> {
+                // Report what the command DID, not that it was dispatched.
+                //
+                // This used to call performPrefixedCommand and then assert
+                // ok:true unconditionally - so a typo, a refusal and a success
+                // were indistinguishable. Caught arming a monitor through this
+                // verb: the result said ok:true and nothing whatsoever had
+                // happened, and there was no way to tell from here.
+                //
+                // A CommandSourceStack can carry both a result callback and an
+                // output sink, so both are captured and handed back.
                 String cmd = a.get("cmd").getAsString();
-                var src = server.createCommandSourceStack().withLevel(level);
+                java.util.List<String> said = new java.util.ArrayList<>();
+                boolean[] worked = {false};
+                int[] count = {0};
+                net.minecraft.commands.CommandSource sink =
+                        new net.minecraft.commands.CommandSource() {
+                    @Override
+                    public void sendSystemMessage(net.minecraft.network.chat.Component message) {
+                        said.add(message.getString());
+                    }
+
+                    @Override
+                    public boolean acceptsSuccess() {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean acceptsFailure() {
+                        return true;
+                    }
+
+                    @Override
+                    public boolean shouldInformAdmins() {
+                        return false;
+                    }
+                };
+                var src = new net.minecraft.commands.CommandSourceStack(
+                        sink, net.minecraft.world.phys.Vec3.atLowerCornerOf(
+                                level.getSharedSpawnPos()),
+                        net.minecraft.world.phys.Vec2.ZERO, level, 4,
+                        "Ghost", net.minecraft.network.chat.Component.literal("Ghost"),
+                        server, null)
+                        .withCallback((success, result) -> {
+                            worked[0] = success;
+                            count[0] = result;
+                        });
                 if (a.has("at")) {
                     BlockPos p = pos(a, "at");
                     src = src.withPosition(new Vec3(p.getX() + 0.5, p.getY(), p.getZ() + 0.5));
                 }
                 server.getCommands().performPrefixedCommand(src, cmd);
-                res.addProperty("ok", true);
+                res.addProperty("ok", worked[0]);
                 res.addProperty("cmd", cmd);
+                res.addProperty("result", count[0]);
+                if (!said.isEmpty()) {
+                    res.add("output", JsonParser.parseString(new Gson().toJson(said)));
+                }
+                if (!worked[0]) {
+                    res.addProperty("detail", said.isEmpty()
+                            ? "the command reported no success and said nothing - "
+                              + "check the name and arguments"
+                            : "the command did not succeed; its own words are in "
+                              + "\"output\"");
+                }
             }
             case "break" -> {
                 BlockPos p = pos(a, "at");
