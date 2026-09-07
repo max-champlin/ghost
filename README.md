@@ -228,6 +228,40 @@ act on a world the moment it launched would be a hole in the wall.
 
 ## Running it on a local model
 
+### End to end, from nothing
+
+Four commands. No API key, no account, no cloud.
+
+```bash
+# 1. a runtime and a model
+winget install Ollama.Ollama          # or: brew install ollama
+ollama pull qwen2.5:7b
+
+# 2. the mod
+#    drop ghost-1.1.0.jar in mods/, start the world, then in chat:
+/ghost bridge on
+
+# 3. the driver
+python drive.py --ghost "<instance>/ghost" --model qwen2.5:7b
+```
+
+Then talk to her in chat. `drive.py` watches `ghost/asks.jsonl`, asks the model
+what to do, writes the action, waits for the result, and hands the result back so
+the model can answer you. It is one file, no dependencies, ~180 lines - short
+enough to read before you trust it with a world.
+
+To try it without the game running at all:
+
+```bash
+python drive.py --ghost "<instance>/ghost" --once "how much inferium is in the network?"
+```
+
+It defaults to [`docs/actions.v2.schema.json`](docs/actions.v2.schema.json), and
+the [measurements below](#what-a-small-model-actually-does---measured) are why.
+
+### Why it fits in a small context
+
+
 Ghost is unusually small-model friendly, and that is a property of the contract
 rather than luck. The agent is handed one situation at a time and answers with
 one list of actions - it is not holding a long tool-calling conversation, so the
