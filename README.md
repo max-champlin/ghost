@@ -17,13 +17,25 @@ If you want your own agent to be able to *actually operate your base*, read on.
 
 ## Running a local model? Start here: [`docs/actions.schema.json`](docs/actions.schema.json)
 
-**This one file is the difference between "needs a 70B" and "runs on 12GB of VRAM."**
+**Use [`docs/actions.v2.schema.json`](docs/actions.v2.schema.json), not the flat
+one. It is worth more than doubling your model.**
 
-Ghost is driven by JSON. Emitting valid JSON is the single thing small models
-reliably fail at — a 7B will get the verbs right and then forget a brace, quote a
-number, or invent a field, and every one of those is a dead request. Constrained
-decoding removes that failure mode completely: the sampler is not *asked* to
-produce valid JSON, it is made **incapable** of producing anything else.
+Ghost is driven by JSON, and constrained decoding means the sampler is not
+*asked* to produce a valid action, it is made **incapable** of producing anything
+else. That much was always true. What this README used to claim beyond it was
+not: that malformed JSON is the thing small models fail at.
+
+Measured, it is not even close. Across 34 tasks neither qwen2.5:3b nor 7b emitted
+a single unparseable response — that failure mode was gone the moment a schema
+was attached. They failed in two other places entirely: choosing the wrong verb,
+and putting the right value in the wrong key. The flat schema does nothing about
+either, because it is a bare list of verb names plus one shared bag of optional
+properties, with no statement of which argument belongs to which verb.
+
+The per-verb schema fixes the second one outright — argument errors fell from 10
+to 0 on the 3B — and a 3B using it beats a 7B using the flat one. Numbers, method
+and the raw responses are below in
+[What a small model actually does](#what-a-small-model-actually-does---measured).
 
 So hand your runtime the schema and stop parsing apologies:
 
@@ -49,9 +61,11 @@ jq -n --argjson schema "$(cat docs/actions.schema.json)" \
 --guided-json docs/actions.schema.json
 ```
 
-The schema covers all 34 verbs, the position format, and which fields belong to
-which action, so the model also cannot ask for `craft` without an item or invent
-a verb that does not exist. Malformed output stops being a class of bug.
+Both schemas cover all 34 verbs and the position format, so no model can invent
+a verb that does not exist. Only the **v2** schema states which fields belong to
+which action — the flat one lists every argument as optional on every verb, which
+is exactly why a model that had understood the request still put a position in
+`block`. With v2 the model also cannot ask for `craft` without an item.
 
 Sizing, prompt shape, and which verbs need more model than others are further
 down in [Running it on a local model](#running-it-on-a-local-model).
@@ -253,51 +267,80 @@ curl localhost:11434/api/chat -d '{"model":"qwen2.5:7b","format":<schema>,...}'
 With the schema enforced, malformed actions stop being a failure mode entirely
 and model size becomes a question of judgement rather than syntax.
 
-### Rough tiers
+### What a small model actually does - measured
 
-These are reasoned from what each step demands, not benchmarked - treat them as
-a starting point and expect your own mileage to differ:
+The tiers here used to be reasoned from what each step seemed to demand. They
+were never run, and when finally run they were **wrong**. Replaced with numbers.
 
-- **1-3B** - can drive templated single actions (`say`, a scan at given
-  coordinates) with the schema enforced. Will not choose sensibly between
-  thirty-four verbs or interpret a block census. Usable as a command parser, not
-  as an assistant.
-- **7-8B** (Llama 3.1 8B, Qwen2.5 7B, Mistral 7B) - the realistic floor for
-  useful autonomous work. Picks the right verb, reads a result, answers in
-  chat. This is where most home labs should start.
-- **14B** (Qwen2.5 14B, Phi-4) - comfortable. Handles multi-step work: find a
-  thing, read it, act on what it said.
-- **32B+** - good. Worth it if you want it reasoning about *modded* systems
-  rather than reporting them.
+34 tasks: 30 single-shot requests plus 4 that hand the model a result and ask it
+to act on what the result says. Scored on whether the right verb came out *and*
+the arguments were usable. Temperature 0, fixed seed; every response is in
+`bench/results-*.jsonl` so the table can be checked rather than believed. Method
+and limits: [`bench/README.md`](bench/README.md).
 
-### What actually works on barebones
+| model | schema | verb right | verb + args | 1-3B | 7-8B | 14B+ | readback |
+|---|---|---|---|---|---|---|---|
+| `qwen2.5:3b` | flat | 17/34 | **7/34** | 0/8 | 4/16 | 2/6 | 1/4 |
+| `qwen2.5:3b` | per-verb | 17/34 | **17/34** | 2/8 | 9/16 | 3/6 | 3/4 |
+| `qwen2.5:7b` | flat | 20/34 | **13/34** | 0/8 | 7/16 | 3/6 | 3/4 |
+| `qwen2.5:7b` | per-verb | 20/34 | **19/34** | 2/8 | 11/16 | 4/6 | 2/4 |
 
-Verb by verb, so you can size honestly rather than discovering it in your base.
-The line that matters is not "can it emit the JSON" - the schema guarantees that
-at any size - it is **"can it choose the right verb and read the answer".**
+- qwen2.5:3b: complete actions 7/34 -> 17/34; verb choice 17 -> 17 (argument errors 10 -> 0)
+- qwen2.5:7b: complete actions 13/34 -> 19/34; verb choice 20 -> 20 (argument errors 7 -> 1)
 
-| tier | verbs it can be trusted with | why |
-|---|---|---|
-| **1-3B** | `say` `where` `read` `find` `have` `places` `worn` `bag` | literal lookups where *you* named the thing. It transcribes, it does not decide. |
-| **7-8B** | the above plus `goto` `post` `return` `slots` `scan` `entities` `take` `put` `craft` (item named explicitly) | picks a verb from a request, reads a result back, answers in chat. The realistic floor. |
-| **14B+** | plus `blockmap` `cells` `waitFor` and multi-step chains | holds a census in context and reasons over it; decides *which* verb without being told. |
+**Read the middle two columns together.** Verb choice is *identical* within each
+model across the two schemas - 17 and 17, 20 and 20. The schema changed nothing
+about what the model decides. What it changed is whether the model can express
+that decision: argument errors went 10 to 0 on the 3B, and 7 to 1 on the 7B.
 
-**Do not point a small model at the destructive four.** `break`, `place`, `fill`
-and `clear` are gated on op 2 in the mod for a reason. A 3B that transposes two
-digits of a coordinate on `clear` removes a 16x16x16 chunk of somebody's base,
-and no amount of schema validity prevents that - the JSON is perfectly well
-formed, it just means something you did not ask for. `command` is worse again.
-Give those a model you would trust with a rollback, or keep them behind a human.
+Which makes the honest headline not "you need a 7B" but **"the schema was doing a
+third of the job it claimed."** A 3B on the per-verb schema (17/34) beats a 7B on
+the flat one (13/34). Fixing the artifact bought more than doubling the model.
 
-`fill`/`clear` do cap at 4096 blocks and skip anything tagged
-`buildinggadgets2:deny`, so the blast radius is bounded - but bounded is not the
-same as safe.
+The failure it removes looks like this - right verb, right values, wrong keys:
 
-**What size does not fix:** a local model will not know what a storage bus or
-Insanium farmland is. It can still report exact counts and positions and let you
-draw the conclusion - which is most of the value - but do not expect a 7B to
-explain your AE2 subnet to you. Domain knowledge is a training-data question,
-not a parameter-count one.
+```
+flat      "Break the stone at 44 12 -8"  ->  {"do":"break","block":"[44, 12, -8]"}
+per-verb  same request, same model       ->  {"do":"break","at":[44,12,-8]}
+```
+
+[`docs/actions.v2.schema.json`](docs/actions.v2.schema.json) gives every verb its
+own `oneOf` branch with a `const` discriminator, only its own properties,
+`additionalProperties: false`, and a description of what it is for. The wrong key
+stops being a mistake and becomes ungrammatical. It is generated from
+`Bridge.java` by `bench/derive_v2.py` rather than hand-written, because a
+hand-maintained table drifts and the drift stays invisible until someone
+benchmarks it.
+
+`oneOf` rather than the more natural `if`/`then`, because llama.cpp's
+schema-to-GBNF converter - what Ollama uses - does not support `if`/`then` and
+would have quietly produced a weaker grammar.
+
+### What is left is verb choice, and that is where size shows
+
+With the per-verb schema the 3B has **zero** argument failures. All 17 remaining
+misses are the wrong verb:
+
+```
+"What armour are you wearing?"  ->  entities
+"What is in your satchel?"      ->  use
+"Where are you right now?"      ->  find
+```
+
+No schema fixes that. Two of the seventeen are near-misses between adjacent verbs
+(`wait` for `waitFor`, `put` for `deposit`), so it is not seventeen wild guesses -
+but choosing correctly among 34 verbs is the real capability floor. Not emitting
+JSON, and not filling arguments.
+
+**So: 7B is a sane starting point, and a 3B is genuinely usable for narrow,
+templated work** - roughly where the old guess landed, for entirely the wrong
+reasons. The part that was flatly wrong is the claim that a 1-3B handles simple
+lookups: both models scored 0/8 on that tier against the shipped schema, and only
+2/8 with the fixed one.
+
+Two models of one family, 34 tasks, single-turn, CPU inference. Enough to
+falsify a wrong claim, which is what it was built for. Not enough to rank models,
+and nobody should use it that way.
 
 ## Requirements
 
