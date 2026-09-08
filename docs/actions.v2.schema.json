@@ -219,6 +219,46 @@
      "additionalProperties": false
     },
     {
+     "title": "golems",
+     "description": "Survey the golem workforce: jobs, crews, hunger, who is holding goods with nowhere to put them.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "golems"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "at": {
+       "$ref": "#/$defs/pos",
+       "description": "Where the action happens."
+      },
+      "detail": {
+       "type": "boolean",
+       "description": "For entities: full per-entity rows including saved NBT, rather than counts."
+      },
+      "dim": {
+       "type": "string",
+       "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$",
+       "description": "Dimension id like minecraft:overworld or allthemodium:mining. Omit for wherever the player is."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "radius": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 64
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
      "title": "entities",
      "description": "Report mobs, players and dropped items nearby.",
      "type": "object",

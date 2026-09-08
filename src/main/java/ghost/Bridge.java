@@ -1208,6 +1208,16 @@ public final class Bridge {
                 res.addProperty("ok", true);
                 res.addProperty("parked", true);
             }
+            case "golems" -> {
+                // Entities can already see them; this answers the question that
+                // actually gets asked, which is "why is the workforce slow".
+                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
+                int r = a.has("radius") ? a.get("radius").getAsInt() : 48;
+                boolean detail = a.has("detail") && a.get("detail").getAsBoolean();
+                res.add("result", JsonParser.parseString(new Gson().toJson(
+                        Golems.survey(level, at, r, detail))));
+                res.addProperty("ok", true);
+            }
             case "entities" -> {
                 BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
                 int r = a.has("radius") ? a.get("radius").getAsInt() : 24;
