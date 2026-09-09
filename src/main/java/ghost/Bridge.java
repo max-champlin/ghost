@@ -1208,6 +1208,18 @@ public final class Bridge {
                 res.addProperty("ok", true);
                 res.addProperty("parked", true);
             }
+            case "history" -> {
+                // The instance's own log, which records far more than anyone
+                // reads. Answering "what happened overnight" took an hour of
+                // grepping once; it should take one call.
+                String kind = a.has("kind") ? a.get("kind").getAsString() : null;
+                String match = a.has("match") ? a.get("match").getAsString() : null;
+                int limit = a.has("count") ? a.get("count").getAsInt() : 20;
+                boolean warnings = a.has("detail") && a.get("detail").getAsBoolean();
+                res.add("result", JsonParser.parseString(new Gson().toJson(
+                        History.read(kind, match, limit, warnings))));
+                res.addProperty("ok", true);
+            }
             case "golems" -> {
                 // Entities can already see them; this answers the question that
                 // actually gets asked, which is "why is the workforce slow".

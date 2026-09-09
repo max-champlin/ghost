@@ -133,7 +133,18 @@ public final class Golems {
                 continue;                 // unreadable is still counted above
             }
 
-            String crew = tag.contains("CrewColour") ? tag.getString("CrewColour") : "none";
+            // CrewColour is an INT, not a string: 0 means no crew, otherwise
+            // it is DyeColor.byId(v - 1). Reading it with getString returned ""
+            // for every golem and reported a crewed workforce as uncrewed.
+            String crew = "none";
+            if (tag.contains("CrewColour")) {
+                int c = tag.getInt("CrewColour");
+                if (c > 0) {
+                    net.minecraft.world.item.DyeColor dye =
+                            net.minecraft.world.item.DyeColor.byId(c - 1);
+                    crew = dye == null ? ("colour" + c) : dye.getName();
+                }
+            }
             byCrew.merge(crew.isEmpty() ? "none" : crew, 1, Integer::sum);
 
             String home = posOf(tag, "homePos");
@@ -200,47 +211,65 @@ public final class Golems {
 
         // Asleep is not the same as gone.
         //
-        // A golem in a bunkhouse is NOT an entity - the block entity holds it as
-        // NBT in a "Sleepers" list and rebuilds it at dawn. An entity scan alone
-        // therefore reports a full bunkhouse as a missing workforce, which is
-        // the exact question this verb gets asked after a scare. Counted from
-        // the block, and kept separate from the walking count so the two can
-        // never be silently added together.
+        // A sleeping golem is NOT an entity - a block holds it as NBT in a
+        // "Sleepers" list and rebuilds it at dawn. An entity scan alone reports
+        // a full dormitory as a vanished workforce, which is exactly what gets
+        // asked after a scare.
+        //
+        // Found by NBT, not by name. The first version matched block ids
+        // containing "bunkhouse" because that is the word the mod's own LOG
+        // uses - the registered block is strawgolem:golem_apartment, so it found
+        // nothing and cheerfully reported zero. Any block holding a Sleepers
+        // list is a dormitory, whatever it is called, in this mod or another.
+        //
+        // Walked per CHUNK rather than per position: the first version iterated
+        // every BlockPos in the cube, which at radius 64 is 2.1 million
+        // getBlockEntity calls on the server thread for a handful of blocks.
         Map<String, Object> asleepAt = new LinkedHashMap<>();
         int asleep = 0;
         List<Map<String, Object>> sleepers = new ArrayList<>();
-        for (BlockPos bp : BlockPos.betweenClosed(
-                centre.offset(-radius, -radius, -radius),
-                centre.offset(radius, radius, radius))) {
-            var be = level.getBlockEntity(bp);
-            if (be == null) {
-                continue;
-            }
-            String block = BuiltInRegistries.BLOCK.getKey(
-                    level.getBlockState(bp).getBlock()).toString();
-            if (!block.contains("bunkhouse")) {
-                continue;
-            }
-            try {
-                CompoundTag bt = be.saveWithFullMetadata(level.registryAccess());
-                var list = bt.getList("Sleepers", 10);
-                String where = bp.getX() + " " + bp.getY() + " " + bp.getZ();
-                asleepAt.put(where, list.size());
-                asleep += list.size();
-                for (int i = 0; i < list.size(); i++) {
-                    CompoundTag st = list.getCompound(i);
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("name", st.contains("birthName")
-                            ? st.getString("birthName") : "?");
-                    row.put("job", st.contains("id") ? job(st.getString("id")) : "?");
-                    if (st.contains("jobsDone")) {
-                        row.put("jobsDone", st.getInt("jobsDone"));
-                    }
-                    row.put("asleepIn", where);
-                    sleepers.add(row);
+        int cx0 = (centre.getX() - radius) >> 4, cx1 = (centre.getX() + radius) >> 4;
+        int cz0 = (centre.getZ() - radius) >> 4, cz1 = (centre.getZ() + radius) >> 4;
+        for (int cx = cx0; cx <= cx1; cx++) {
+            for (int cz = cz0; cz <= cz1; cz++) {
+                if (!level.hasChunk(cx, cz)) {
+                    continue;                 // not loaded is not the same as empty
                 }
-            } catch (Exception ex) {
-                Ghost.LOG.warn("could not read the bunkhouse at {}", bp, ex);
+                for (Map.Entry<BlockPos, net.minecraft.world.level.block.entity.BlockEntity> en
+                        : level.getChunk(cx, cz).getBlockEntities().entrySet()) {
+                    BlockPos bp = en.getKey();
+                    if (bp.distSqr(centre) > (long) radius * radius) {
+                        continue;
+                    }
+                    CompoundTag bt;
+                    try {
+                        bt = en.getValue().saveWithFullMetadata(level.registryAccess());
+                    } catch (Exception ex) {
+                        continue;
+                    }
+                    if (!bt.contains("Sleepers")) {
+                        continue;
+                    }
+                    var list = bt.getList("Sleepers", 10);
+                    String where = bp.getX() + " " + bp.getY() + " " + bp.getZ();
+                    asleepAt.put(where + " ("
+                            + BuiltInRegistries.BLOCK.getKey(
+                                    level.getBlockState(bp).getBlock()).getPath() + ")",
+                            list.size());
+                    asleep += list.size();
+                    for (int i = 0; i < list.size(); i++) {
+                        CompoundTag st = list.getCompound(i);
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("name", st.contains("birthName")
+                                ? st.getString("birthName") : "?");
+                        row.put("job", st.contains("id") ? job(st.getString("id")) : "?");
+                        if (st.contains("jobsDone")) {
+                            row.put("jobsDone", st.getInt("jobsDone"));
+                        }
+                        row.put("asleepIn", where);
+                        sleepers.add(row);
+                    }
+                }
             }
         }
 
@@ -252,7 +281,7 @@ public final class Golems {
         out.put("accountedFor", total + asleep);
         if (asleep > 0) {
             out.put("asleepPerBunkhouse", asleepAt);
-            out.put("asleepNote", "sleeping golems are NBT inside the bunkhouse, "
+            out.put("asleepNote", "sleeping golems are NBT inside the dormitory block, "
                     + "not entities - they will not appear in an entity scan and "
                     + "are not missing");
         }
@@ -261,7 +290,8 @@ public final class Golems {
         out.put("jobsDone", jobsTotal);
         out.put("holdingSomething", holding);
         out.put("homeless", homeless);
-        out.put("bunkhouses", homes.size());
+        out.put("dormitories", asleepAt.size());
+        out.put("distinctHomes", homes.size());
         out.put("occupancy", homes);
         if (max > 0) {
             out.put("hungry", hungry);

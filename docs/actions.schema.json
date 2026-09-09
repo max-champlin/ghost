@@ -32,6 +32,7 @@
       "blockmap",
       "find",
       "read",
+      "history",
       "golems",
       "entities",
       "have",
@@ -200,6 +201,10 @@
     "note": {
      "type": "string",
      "description": "Free text recorded with a remembered place."
+    },
+    "kind": {
+     "type": "string",
+     "description": "For history: which bucket of log lines - golemGone, golemStuck, golemRecovered, golemRoster, golemRelease, ghost, throughput, death, lag, chunk, crash, error, warn."
     }
    },
    "allOf": [

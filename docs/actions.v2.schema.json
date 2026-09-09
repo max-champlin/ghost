@@ -219,6 +219,53 @@
      "additionalProperties": false
     },
     {
+     "title": "history",
+     "description": "Read the instance log: deaths, stalls, errors, crashes, lag - what happened while you were away.",
+     "type": "object",
+     "properties": {
+      "do": {
+       "const": "history"
+      },
+      "as": {
+       "type": "string",
+       "description": "Player name to act on behalf of, for the rank check."
+      },
+      "count": {
+       "type": "integer",
+       "minimum": 1,
+       "description": "craft: how many."
+      },
+      "detail": {
+       "type": "boolean",
+       "description": "For entities: full per-entity rows including saved NBT, rather than counts."
+      },
+      "dim": {
+       "type": "string",
+       "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$",
+       "description": "Dimension id like minecraft:overworld or allthemodium:mining. Omit for wherever the player is."
+      },
+      "go": {
+       "type": "boolean",
+       "description": "Send the body to `at` before running the action. Skip for bulk work; it only adds travel time."
+      },
+      "kind": {
+       "type": "string",
+       "description": "For history: which bucket of log lines - golemGone, golemStuck, golemRecovered, golemRoster, golemRelease, ghost, throughput, death, lag, chunk, crash, error, warn."
+      },
+      "match": {
+       "type": "array",
+       "description": "blockmap: substrings to bucket by, e.g. [\"ae2:\", \"mekanism:\"].",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "do"
+     ],
+     "additionalProperties": false
+    },
+    {
      "title": "golems",
      "description": "Survey the golem workforce: jobs, crews, hunger, who is holding goods with nowhere to put them.",
      "type": "object",

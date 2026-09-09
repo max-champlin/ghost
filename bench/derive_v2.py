@@ -43,6 +43,7 @@ WHAT = {
     "find": "Locate the nearest block of a given kind.",
     "read": "Report the single block at one position.",
     "entities": "Report mobs, players and dropped items nearby.",
+    "history": "Read the instance log: deaths, stalls, errors, crashes, lag - what happened while you were away.",
     "golems": "Survey the golem workforce: jobs, crews, hunger, who is holding goods with nowhere to put them.",
     "have": "Count how much of an item is nearby or in the ME network.",
     "craft": "Ask the ME network to craft an item.",
