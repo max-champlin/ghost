@@ -18,7 +18,7 @@ import java.util.Map;
 /**
  * One step back. A mulligan, not a history.
  *
- * <p>Shelby no longer refuses to touch anything - she does the job and says
+ * <p>Shelby no longer refuses to touch anything - they do the job and says
  * loudly when it was something normally protected. That is the right shape for
  * an assistant rather than a tool, but it only works if a wrong instruction can
  * be taken back. Legibility without recovery just means you get to watch the

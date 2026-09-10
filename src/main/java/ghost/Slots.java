@@ -209,10 +209,10 @@ public final class Slots {
      *
      * <p>Separate from the satchel on purpose: worn and carried are different
      * questions, and the one that prompted this was "where did the armour I
-     * gave her go", which the satchel cannot answer either way.
+     * gave their go", which the satchel cannot answer either way.
      *
-     * <p>Reports damage and enchantments, because "she still has the chestplate"
-     * and "she has the chestplate and it is two hits from breaking" are not the
+     * <p>Reports damage and enchantments, because "they still has the chestplate"
+     * and "they have the chestplate and it is two hits from breaking" are not the
      * same answer - a helmet at 310 damage looked fine right up until it did not.
      */
     static Map<String, Object> worn(net.minecraft.world.entity.LivingEntity who) {

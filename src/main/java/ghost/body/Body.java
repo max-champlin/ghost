@@ -89,7 +89,7 @@ public class Body extends PathfinderMob {
     /**
      * Consecutive keep-up checks with no usable path before it gives up on
      * walking. Three seconds of standing still is unmistakable, and short enough
-     * that a wall between her and the player is not a minute of confusion.
+     * that a wall between them and the player is not a minute of confusion.
      */
     private static final int UNPATHABLE_LIMIT = 3;
 
@@ -97,27 +97,27 @@ public class Body extends PathfinderMob {
     private UUID followId;
 
     /**
-     * How fast she closes on someone who is flying, in blocks per tick.
+     * How fast they closes on someone who is flying, in blocks per tick.
      *
      * <p>Deliberately below a creative-flight sprint. Matching it exactly would
-     * park her inside the player's head; being a little slower means she trails
+     * park their inside the player's head; being a little slower means they trail
      * behind and reads as following rather than being attached.
      */
     private static final double HOVER_SPEED = 0.45;
 
-    /** True while she is holding station in the air because her player is. */
+    /** True while they are holding station in the air because their player is. */
     private boolean hovering;
 
     /**
-     * What she is carrying.
+     * What they are carrying.
      *
-     * <p>Until now she could hold exactly one stack, in her hand, which meant
+     * <p>Until now they could hold exactly one stack, in their hand, which meant
      * every errand that moved more than one kind of item had to be a separate
      * trip. A satchel is the difference between "fetch me that" and "go and
      * tidy that up" - and it is what {@code take} and {@code put} move things
      * into and out of.
      *
-     * <p>A single chest's worth on purpose. Bigger would make her a mobile
+     * <p>A single chest's worth on purpose. Bigger would make their a mobile
      * storage system, which is a different thing from an assistant and one the
      * base already has better answers for.
      */
@@ -131,11 +131,11 @@ public class Body extends PathfinderMob {
     private int unpathableTicks;
 
     /**
-     * A job site she has been sent to, or null when she is simply with you.
+     * A job site they have been sent to, or null when they are simply with you.
      *
-     * <p>While posted she stops following. An assistant that trots after you
+     * <p>While posted they stop following. An assistant that trots after you
      * while supposedly away doing something is not away doing something, and
-     * the point of sending her is that the work happens somewhere you are not.
+     * the point of sending their is that the work happens somewhere you are not.
      */
     private BlockPos post;
 
@@ -169,9 +169,9 @@ public class Body extends PathfinderMob {
     }
 
     /**
-     * Anything she is wearing comes back if she is ever removed.
+     * Anything they are wearing comes back if they are ever removed.
      *
-     * <p>She can only be got rid of with {@code /kill}, and losing a set of
+     * <p>They can only be got rid of with {@code /kill}, and losing a set of
      * someone's good armour to a housekeeping command would be a nasty
      * surprise. Called from the constructor AND after every load, because the
      * load overwrites it - see {@link #readAdditionalSaveData}.
@@ -184,15 +184,15 @@ public class Body extends PathfinderMob {
 
     // --- being sent somewhere ---------------------------------------------
 
-    /** Send her somewhere for the duration of a batch. */
+    /** Send them somewhere for the duration of a batch. */
     public void postTo(BlockPos site) {
         postTo(site, false);
     }
 
     /**
-     * Send her to a job site.
+     * Send them to a job site.
      *
-     * @param sticky true to station her until explicitly released; false for an
+     * @param sticky true to station them until explicitly released; false for an
      *               errand that ends when the batch does
      */
     public void postTo(BlockPos site, boolean sticky) {
@@ -203,11 +203,11 @@ public class Body extends PathfinderMob {
     }
 
     /**
-     * Is she still on her way somewhere she was sent?
+     * Is they still on their way somewhere they were sent?
      *
-     * <p>The bridge asks before recalling her at the end of a batch. A batch
+     * <p>The bridge asks before recalling them at the end of a batch. A batch
      * finishes in a tick or two; a walk across the base takes seconds. Recalling
-     * on batch-end therefore cancelled every errand before she arrived, and any
+     * on batch-end therefore cancelled every errand before they arrived, and any
      * walk under the 24-block teleport threshold - the ones that go on foot -
      * never completed at all. Reported from in-game as "the walk keeps getting
      * recalled mid-transit", which is exactly what it was.
@@ -222,18 +222,18 @@ public class Body extends PathfinderMob {
     /**
      * Ticks an errand may run before it is abandoned.
      *
-     * <p>Without this, a post she can never reach would hold her off following
+     * <p>Without this, a post they can never reach would hold them off following
      * anyone, forever, with nothing left to clear it - the walk fix removes the
      * batch-end clear that used to (accidentally) do that job.
      */
     private static final int ERRAND_LIMIT = 20 * 90;
 
-    /** True when she was stationed on purpose and must not be auto-recalled. */
+    /** True when they were stationed on purpose and must not be auto-recalled. */
     /**
-     * Where she is trying to get to, or null if nowhere.
+     * Where they are trying to get to, or null if nowhere.
      *
-     * <p>Exposed because every mystery about this body has been "why did she
-     * move", and nothing reported what she was TRYING to do - only where she
+     * <p>Exposed because every mystery about this body has been "why did they
+     * move", and nothing reported what they were TRYING to do - only where they
      * ended up. A position without an intention is not diagnosable: an
      * unexplained drift and a perfectly correct walk to a posting look identical
      * from outside.
@@ -247,7 +247,7 @@ public class Body extends PathfinderMob {
         return hovering;
     }
 
-    /** Who she is keeping up with, or null. */
+    /** Who they are keeping up with, or null. */
     public java.util.UUID followedId() {
         return followId;
     }
@@ -256,7 +256,7 @@ public class Body extends PathfinderMob {
         return post != null && postSticky;
     }
 
-    /** Release her; she goes back to keeping up with whoever she follows. */
+    /** Release them; they go back to keeping up with whoever they follow. */
     public void clearPost() {
         this.post = null;
         this.postSticky = false;
@@ -276,17 +276,17 @@ public class Body extends PathfinderMob {
     // --- getting dressed --------------------------------------------------
 
     /**
-     * Put clothes on her, or take them off.
+     * Put clothes on them, or take them off.
      *
      * <p>Three gestures, chosen so nothing can be handed over by accident:
      *
      * <ul>
-     *   <li>right-click holding <b>armour</b> - she wears it, and hands back
+     *   <li>right-click holding <b>armour</b> - they wear it, and hands back
      *       whatever was in that slot</li>
-     *   <li>right-click with an <b>empty hand</b> - she says what she is
-     *       wearing. It reads out, it does not undress her.</li>
-     *   <li><b>sneak</b> + empty hand - she takes one thing off</li>
-     *   <li><b>sneak</b> right-click holding anything else - she holds it</li>
+     *   <li>right-click with an <b>empty hand</b> - they say what they are
+     *       wearing. It reads out, it does not undress them.</li>
+     *   <li><b>sneak</b> + empty hand - they take one thing off</li>
+     *   <li><b>sneak</b> right-click holding anything else - they hold it</li>
      * </ul>
      *
      * <p>Non-armour deliberately does nothing on a plain right-click. Equipping
@@ -372,8 +372,8 @@ public class Body extends PathfinderMob {
     protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(1, new FollowPlayerGoal(this));
-        // She wanders only while the bridge is armed. With it off she cannot
-        // act on anything, and drifting around as though she might is the
+        // They wanders only while the bridge is armed. With it off they cannot
+        // act on anything, and drifting around as though they might is the
         // wrong impression to give.
         goalSelector.addGoal(2, new WaterAvoidingRandomStrollGoal(this, 0.7) {
             @Override
@@ -385,19 +385,19 @@ public class Body extends PathfinderMob {
         goalSelector.addGoal(4, new RandomLookAroundGoal(this));
     }
 
-    // --- what she looks like she is doing ---------------------------------
+    // --- what they looks like they are doing ---------------------------------
 
     /**
      * Posture as an honest status light.
      *
      * <p>Ghost's whole design refuses to look busier than it is, and this is the
      * same rule applied to a body. Rather than inventing idle animation for its
-     * own sake, what she does with herself reports the actual state of the
+     * own sake, what they do with themselves reports the actual state of the
      * system:
      *
      * <ul>
-     *   <li><b>settled</b> - the bridge is disarmed, nothing can reach her, and
-     *       she is sitting it out. Visible from across the room without typing
+     *   <li><b>settled</b> - the bridge is disarmed, nothing can reach them, and
+     *       they are sitting it out. Visible from across the room without typing
      *       a command</li>
      *   <li><b>upright</b> - armed and available</li>
      *   <li><b>working</b> - actions in flight, or AE2 still thinking about a
@@ -405,7 +405,7 @@ public class Body extends PathfinderMob {
      *       thread" has no natural pose</li>
      * </ul>
      *
-     * <p>She never crouches while moving: a crouch-walk reads as sneaking
+     * <p>They never crouches while moving: a crouch-walk reads as sneaking
      * rather than resting, which would say the wrong thing entirely.
      */
     private void showState() {
@@ -413,7 +413,7 @@ public class Body extends PathfinderMob {
         // Settled means genuinely idle: nothing in flight, nowhere being walked
         // to, and no posting to stand at. It used to mean only "the bridge is
         // disarmed", which was a status light nobody asked for - with the bridge
-        // open she never sat down at all, which is every normal session.
+        // open they never sat down at all, which is every normal session.
         boolean settled = !busy && post == null && getNavigation().isDone();
         Pose wanted = settled ? Pose.CROUCHING : Pose.STANDING;
         if (getPose() != wanted) {
@@ -429,7 +429,7 @@ public class Body extends PathfinderMob {
 
     // --- who we are following --------------------------------------------
 
-    /** Bind to a particular player - used when someone addresses her in chat. */
+    /** Bind to a particular player - used when someone addresses them in chat. */
     public void setFollowed(UUID id) {
         this.followId = id;
     }
@@ -473,7 +473,7 @@ public class Body extends PathfinderMob {
         }
         // A posting is an instruction that outlives the session that gave it.
         // Without this, "stay by the bed" survived exactly until the next
-        // restart and then she quietly went back to following - which looks
+        // restart and then they quietly went back to following - which looks
         // like the order was ignored rather than forgotten.
         tag.put("Bag", bag.createTag(registryAccess()));
         if (post != null) {
@@ -553,7 +553,7 @@ public class Body extends PathfinderMob {
         }
         keepUpCooldown = KEEP_UP_INTERVAL;
 
-        // A posting outranks the player. She is at work.
+        // A posting outranks the player. They are at work.
         if (post != null) {
             travelToPost();
             return;
@@ -582,8 +582,8 @@ public class Body extends PathfinderMob {
         // Everything below this assumes the ground: the navigator paths over
         // walkable blocks, and stepAcrossTo hunts for a WALKABLE landing spot.
         // Neither exists under someone in creative flight, so the search fell
-        // through to arriveAt() at the player's own feet and she dropped out of
-        // the sky the instant she caught up - repeatedly, and from any height.
+        // through to arriveAt() at the player's own feet and they dropped out of
+        // the sky the instant they caught up - repeatedly, and from any height.
         if (airborne(p)) {
             beginHover();
             if (d2 > TELEPORT_AT * TELEPORT_AT) {
@@ -617,7 +617,7 @@ public class Body extends PathfinderMob {
     }
 
     /**
-     * Make her way to the job site, by the same rules she follows a player by:
+     * Make their way to the job site, by the same rules they follow a player by:
      * walk when walking is reasonable, step across when it is not.
      */
     private void travelToPost() {
@@ -668,9 +668,9 @@ public class Body extends PathfinderMob {
      * Cross to another world on purpose, rather than because someone walked.
      *
      * <p>Same machinery as following through a portal - snapshot first, verify
-     * arrival, rebuild if the transfer eats her - just reached deliberately.
+     * arrival, rebuild if the transfer eats them - just reached deliberately.
      * A warp that refuses to cross a dimension is not much of a warp, and
-     * "he is in the mining dimension and she is not" is an ordinary Tuesday.
+     * "he is in the mining dimension and they are not" is an ordinary Tuesday.
      */
     public void crossTo(ServerLevel dest, Vec3 at) {
         followThrough(dest, at);
@@ -685,7 +685,7 @@ public class Body extends PathfinderMob {
             if (!isAlive() || level() == dest) {
                 return;
             }
-            // Snapshot BEFORE the crossing, because the crossing is where she
+            // Snapshot BEFORE the crossing, because the crossing is where they
             // can be lost.
             //
             // Entity.changeDimension removes this entity first and only then
@@ -713,11 +713,11 @@ public class Body extends PathfinderMob {
     }
 
     /**
-     * Put her back together after a crossing that ate her.
+     * Put them back together after a crossing that ate them.
      *
      * <p>Same identity, same inventory, same clothes - the snapshot is the
      * entity's own NBT, taken a moment before it vanished. The Dimension key is
-     * dropped because it names where she came FROM.
+     * dropped because it names where they came FROM.
      */
     private static void rebuild(ServerLevel dest, Vec3 at, CompoundTag snapshot) {
         try {
@@ -763,16 +763,16 @@ public class Body extends PathfinderMob {
      * Appear near a position, preferring somewhere sensible to stand.
      *
      * <p>Same search vanilla uses for pets: ten tries at a walkable, uncrowded
-     * spot a couple of blocks off, so she does not land underfoot. Unlike
+     * spot a couple of blocks off, so they do not land underfoot. Unlike
      * vanilla's, this one does not silently fail - if every candidate is
-     * rejected she arrives anyway. Being briefly inside a wall is recoverable
-     * and she is invulnerable; being lost forever is the bug we are fixing.
+     * rejected they arrive anyway. Being briefly inside a wall is recoverable
+     * and they are invulnerable; being lost forever is the bug we are fixing.
      */
     /**
-     * Is this player off the ground in a way she cannot walk to?
+     * Is this player off the ground in a way they cannot walk to?
      *
      * <p>Creative flight and an elytra both count. Ordinary jumping and falling
-     * do not - those resolve themselves in under a second, and switching her
+     * do not - those resolve themselves in under a second, and switching them
      * into a hover for them would make every hop look like a glitch.
      */
     private static boolean airborne(Player p) {
@@ -787,7 +787,7 @@ public class Body extends PathfinderMob {
         setNoGravity(true);
         // A ground path to a point in the sky is unreachable by definition, and
         // leaving it running means the navigator fights the station-keeping
-        // below for control of her velocity every tick.
+        // below for control of their velocity every tick.
         getNavigation().stop();
     }
 
@@ -809,19 +809,19 @@ public class Body extends PathfinderMob {
             endHover();
             return;
         }
-        // Slightly above eye level, so she is in view rather than underfoot.
+        // Slightly above eye level, so they are in view rather than underfoot.
         Vec3 gap = p.position().add(0.0, 0.6, 0.0).subtract(position());
         double away = gap.length();
         if (away < FOLLOW_STOP) {
-            // Bleed off speed instead of stopping dead, or she jitters against
+            // Bleed off speed instead of stopping dead, or they jitters against
             // the stop radius every tick.
             setDeltaMovement(getDeltaMovement().scale(0.6));
         } else {
             setDeltaMovement(gap.normalize().scale(Math.min(HOVER_SPEED, away / 8.0)));
         }
         getLookControl().setLookAt(p, 30.0F, 30.0F);
-        // Vanilla only clears fall distance on landing, and she never lands
-        // while hovering - so without this she banks up a lethal number and
+        // Vanilla only clears fall distance on landing, and they never lands
+        // while hovering - so without this they banks up a lethal number and
         // takes it all the moment gravity comes back on.
         fallDistance = 0.0F;
     }
@@ -848,7 +848,7 @@ public class Body extends PathfinderMob {
         // Nothing walkable nearby, so look UP AND DOWN the column before
         // giving up.
         //
-        // The blind fallback below buried her. It places her at the target
+        // The blind fallback below buried them. It places them at the target
         // whatever is there, on the reasoning that being briefly inside a wall
         // beats being lost - which is right, except "briefly" turned out to mean
         // twenty minutes encased in a ceiling three blocks above the player,
@@ -869,10 +869,10 @@ public class Body extends PathfinderMob {
                 }
             }
         }
-        // Truly nowhere to stand. Place her anyway rather than lose her, but say
+        // Truly nowhere to stand. Place them anyway rather than lose them, but say
         // so - a silently buried body is what made this hard to find.
         ghost.Ghost.LOG.warn("no standable spot near {} - placing regardless; "
-                + "she may be inside a block", around);
+                + "they may be inside a block", around);
         arriveAt(around.getX() + 0.5, around.getY(), around.getZ() + 0.5);
     }
 
@@ -951,7 +951,7 @@ public class Body extends PathfinderMob {
         @Override
         public boolean canUse() {
             if (body.posted()) {
-                return false;                 // she is at work
+                return false;                 // they are at work
             }
             Player p = body.followed();
             if (p == null || p.isSpectator() || p.level() != body.level()) {

@@ -134,7 +134,7 @@ public final class GhostCommand {
             return 1;
         }));
 
-        // /ghost body [here|away] - stand Shelby up, or send her away again.
+        // /ghost body [here|away] - stand Shelby up, or send them away again.
         root.then(Commands.literal("body")
                 .executes(ctx -> body(ctx.getSource(), "here"))
                 .then(Commands.literal("here").executes(ctx -> body(ctx.getSource(), "here")))
@@ -396,12 +396,12 @@ public final class GhostCommand {
         // a body you cannot see, and every instruction goes to the wrong one.
         // This is therefore also the recovery command for exactly that mess.
         int removed = 0;
-        // Keep what she was wearing and carrying.
+        // Keep what they were wearing and carrying.
         //
         // "body here" discarded every existing body and stood up a blank one,
-        // which DESTROYED her armour and satchel - discard is a silent removal,
+        // which DESTROYED their armour and satchel - discard is a silent removal,
         // so setGuaranteedDrop never fires and nothing lands on the floor. A
-        // command called "here" reads as "come here", not "delete her and build
+        // command called "here" reads as "come here", not "delete them and build
         // a replacement", and losing a suit of someone's armour to that is not
         // a defensible default. Reported the hard way: a full Spider-Man set,
         // twice in one evening.
@@ -460,14 +460,19 @@ public final class GhostCommand {
             chosen.discard();
             removed++;
         }
-        final int strays = Math.max(0, mine.size() - removed);
+        final java.util.List<ghost.body.Body> strayList = new java.util.ArrayList<>();
+        for (ghost.body.Body b : mine) {
+            if (b != chosen && b.isAlive()) {
+                strayList.add(b);
+            }
+        }
         final int others = othersLeft;
         if ("away".equals(mode)) {
             final int n = removed;
             src.sendSuccess(() -> Component.literal(n > 0
-                    ? "Shelby: body away (" + n + ")" + tail(strays, others)
+                    ? "Shelby: body away (" + n + ")" + tail(strayList, level, others)
                     : "Shelby: no body of yours in this dimension to send away."
-                      + tail(strays, others)), false);
+                      + tail(strayList, level, others)), false);
             return 1;
         }
         ghost.body.Body b = ghost.body.Bodies.SHELBY.get().create(level);
@@ -482,18 +487,18 @@ public final class GhostCommand {
             return 0;
         }
         // Claim it. This is what makes "one Shelby per player" true rather than
-        // aspirational: from here on she is only ever a candidate for this
+        // aspirational: from here on they are only ever a candidate for this
         // player's own "body here", and never for anyone else's.
         if (ownerId != null) {
             b.setFollowed(ownerId);
         }
         // Move the kit across. Position, posting and dimension deliberately are
-        // NOT carried - the whole point of the command is to put her somewhere
-        // else - so only the things she owns come with her.
+        // NOT carried - the whole point of the command is to put them somewhere
+        // else - so only the things they owns come with them.
         final int moved = carryOver(kit, b);
         src.sendSuccess(() -> Component.literal((moved > 0
                 ? "Shelby: standing up (brought " + moved + " item" + (moved == 1 ? "" : "s") + ")"
-                : "Shelby: standing up") + tail(strays, others)), false);
+                : "Shelby: standing up") + tail(strayList, level, others)), false);
         return 1;
     }
 
@@ -509,13 +514,29 @@ public final class GhostCommand {
      * one of them, "where" reports a confident position for a body you cannot
      * see, and nothing ever said there was more than one.
      */
-    private static String tail(int strays, int others) {
+    private static String tail(java.util.List<ghost.body.Body> strayList,
+                               net.minecraft.world.level.Level here, int others) {
         StringBuilder sb = new StringBuilder();
-        if (strays > 0) {
-            sb.append(" - ").append(strays).append(" more of yours still standing elsewhere");
+        if (!strayList.isEmpty()) {
+            // Name the dimension, or say "in this one".
+            //
+            // "still standing elsewhere" read as nonsense when the stray was
+            // six blocks away in the same room, which is exactly what happened
+            // the first time this fired. "Elsewhere" is only true when it is a
+            // different dimension, and when it IS, the dimension is the single
+            // most useful thing to say - a body in another dimension is
+            // invisible to every verb until you go there.
+            java.util.LinkedHashSet<String> where = new java.util.LinkedHashSet<>();
+            for (ghost.body.Body b : strayList) {
+                where.add(b.level() == here
+                        ? "this dimension"
+                        : b.level().dimension().location().toString());
+            }
+            sb.append(" - ").append(strayList.size()).append(" more of yours in ")
+              .append(String.join(", ", where));
         }
         if (others > 0) {
-            sb.append(strays > 0 ? "," : " -").append(' ')
+            sb.append(strayList.isEmpty() ? " -" : ",").append(' ')
               .append(others).append(" belonging to someone else, left alone");
         }
         return sb.toString();
@@ -544,15 +565,15 @@ public final class GhostCommand {
             //
             // Entity.load() was here too, and it reads Pos, Motion and Rotation
             // from the tag it is given. This tag deliberately carries none of
-            // those - the point of the command is to put her somewhere NEW - so
-            // load() set her position to 0, 0, 0 and flung her to the world
-            // origin. She appeared beside the player and vanished in the same
+            // those - the point of the command is to put them somewhere NEW - so
+            // load() set their position to 0, 0, 0 and flung them to the world
+            // origin. They appeared beside the player and vanished in the same
             // breath. It was also redundant: load() calls
             // readAdditionalSaveData itself, so the kit was being read twice and
             // the position destroyed for nothing.
             fresh.readAdditionalSaveData(keep);
         } catch (Exception e) {
-            ghost.Ghost.LOG.error("could not carry her kit to the new body", e);
+            ghost.Ghost.LOG.error("could not carry their kit to the new body", e);
             return 0;
         }
         return moved;

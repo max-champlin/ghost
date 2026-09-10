@@ -78,10 +78,10 @@ public final class Bridge {
     /**
      * An action parked until Shelby has physically got to where it happens.
      *
-     * <p>Actions used to take effect at coordinates regardless of where she was
-     * standing, which made the body decorative - she could be told to break a
+     * <p>Actions used to take effect at coordinates regardless of where they were
+     * standing, which made the body decorative - they could be told to break a
      * block on the other side of the base and simply do it from the sofa. With
-     * {@code "go": true} the action waits until she is actually there.
+     * {@code "go": true} the action waits until they are actually there.
      *
      * <p>Opt-in rather than always, deliberately. A twenty-step batch that
      * walked between every step would turn a second of work into ten minutes,
@@ -93,9 +93,9 @@ public final class Bridge {
     /**
      * An action that has been reached for but not yet done.
      *
-     * <p>The beat. She arrives, turns, puts a hand out - and then, a fraction
+     * <p>The beat. They arrive, turns, puts a hand out - and then, a fraction
      * later, the thing happens. Doing it in the same tick as the arrival reads
-     * as the world reacting to her presence rather than to her hands, which is
+     * as the world reacting to their presence rather than to their hands, which is
      * exactly the "looks at you and poops out a block" problem. Four tenths of a
      * second is enough to see cause and effect in the right order.
      */
@@ -109,13 +109,13 @@ public final class Bridge {
     private static final double ARRIVED_WITHIN = 3.5;
 
     /**
-     * A player's reach. Past this she walks over rather than acting at range.
+     * A player's reach. Past this they walk over rather than acting at range.
      *
      * <p>This is the difference between an assistant and a cursor. Every
-     * hands-on verb used to work at any distance: she would stand across the
+     * hands-on verb used to work at any distance: they would stand across the
      * room, not look up, and a block would appear in a chest forty blocks away.
      * It worked, and it read as a scripted effect rather than as someone
-     * helping. If the pitch is "she works at your base with you", then she has
+     * helping. If the pitch is "they work at your base with you", then they have
      * to go to the chest.
      */
     private static final double REACH = 4.5;
@@ -124,14 +124,14 @@ public final class Bridge {
      * Verbs that physically do something somewhere.
      *
      * <p>These travel by default. Reads ({@code scan}, {@code find},
-     * {@code read}, {@code have}) deliberately do not - she is allowed to know
+     * {@code read}, {@code have}) deliberately do not - they are allowed to know
      * things without walking to them, the same way you can read a map.
      */
     private static final java.util.Set<String> HANDS_ON = java.util.Set.of(
             "use", "break", "place", "take", "put", "slots",
             "withdraw", "deposit", "fill", "clear");
 
-    /** Longest she may spend travelling before the action happens anyway. */
+    /** Longest they may spend travelling before the action happens anyway. */
     private static final int TRAVEL_TIMEOUT = 600;
 
     private static final Deque<JsonObject> QUEUE = new ArrayDeque<>();
@@ -249,13 +249,13 @@ public final class Bridge {
             boolean there = body == null || body.arrived(ARRIVED_WITHIN);
             boolean expired = lvl.getGameTime() >= goDeadline;
             if (!there && !expired) {
-                return;                       // still on her way
+                return;                       // still on their way
             }
             JsonObject act = pendingGo;
             pendingGo = null;
             act.addProperty("__arrived", true);
-            // She has walked to it; now face it and put a hand out, so the
-            // thing that happens next visibly comes from her.
+            // They have walked to it; now face it and put a hand out, so the
+            // thing that happens next visibly comes from them.
             if (body != null && act.has("at")) {
                 try {
                     reachFor(body, pos(act, "at"));
@@ -433,7 +433,7 @@ public final class Bridge {
      * {@code ok:false} with a stack trace describes the one step that failed and
      * hides the one that worked.
      *
-     * <p>So before saying a thing failed: check whether the world moved. If she
+     * <p>So before saying a thing failed: check whether the world moved. If they
      * changed dimension or was carried somewhere, the load-bearing part happened
      * and the caller needs to know that far more than it needs the trace.
      */
@@ -451,7 +451,7 @@ public final class Bridge {
                 res.addProperty("movedTo", after[0]);
                 res.addProperty("at", after[1]);
                 res.addProperty("why", "the interaction threw, but only after it "
-                        + "had already carried her from " + before[0] + " to "
+                        + "had already carried them from " + before[0] + " to "
                         + after[0] + ". The part that matters happened; the step "
                         + "that failed was a follow-up that wanted a real "
                         + "client to talk to.");
@@ -460,8 +460,8 @@ public final class Bridge {
             if (!before[1].equals(after[1])) {
                 res.addProperty("movedFrom", before[1]);
                 res.addProperty("at", after[1]);
-                res.addProperty("note", "she moved despite the error - check "
-                        + "where she is before assuming nothing happened.");
+                res.addProperty("note", "they moved despite the error - check "
+                        + "where they are before assuming nothing happened.");
             }
         }
 
@@ -482,7 +482,7 @@ public final class Bridge {
      *
      * <p>Cosmetic, and the point. An arm that swings and a head that turns are
      * what make an action read as done BY someone rather than done TO the
-     * world; without them she stares into the middle distance while chests
+     * world; without them they stares into the middle distance while chests
      * rearrange themselves. The container sound is here for the same reason -
      * hearing a lid is most of what tells you a chest was opened.
      */
@@ -590,9 +590,9 @@ public final class Bridge {
     /**
      * Where an action happens when it names no position of its own.
      *
-     * <p>Shelby's body wins if she has one. That is the whole difference between
+     * <p>Shelby's body wins if they have one. That is the whole difference between
      * a tool and a presence: "what is around you" should mean around HER, at the
-     * spot the player can see her standing, rather than around whoever happens
+     * spot the player can see them standing, rather than around whoever happens
      * to be first in the player list. Falls back to the old behaviour when there
      * is no body, so nothing that worked before stops working.
      */
@@ -602,7 +602,7 @@ public final class Bridge {
      * <p>The inbox is written by a program, not a player, so a rank check needs
      * a person to attach to. Named explicitly with {@code "as"} where it
      * matters; otherwise it is whoever the body is currently keeping up with,
-     * which is the person who last spoke to her - the same someone whose
+     * which is the person who last spoke to them - the same someone whose
      * request this almost certainly is.
      *
      * <p>Falling back to "any player on the server" is deliberate and safe:
@@ -703,36 +703,36 @@ public final class Bridge {
         res.addProperty("dimension", level.dimension().location().toString());
         res.addProperty("dimFrom", dimSource(server, a));
 
-        // "go": true - send her there first, and run this when she arrives.
+        // "go": true - send them there first, and run this when they arrive.
         // Go there first - by default, for anything hands-on.
         //
         // "go" used to be opt-in, so the normal case was acting at arbitrary
         // range. Now the normal case is walking over, and "go": false is the
         // escape hatch for when you deliberately want the effect without the
         // journey. Already within arm's length? Then there is nothing to walk,
-        // and she just does it.
+        // and they just does it.
         boolean handsOn = HANDS_ON.contains(what);
         boolean wantGo = a.has("go") ? a.get("go").getAsBoolean() : handsOn;
 
         // A standing order outranks a default.
         //
         // Travelling by default is right for the common case and wrong the
-        // moment someone has deliberately STATIONED her: "wait by the bed" then
-        // "check that chest" should not walk her across the base and leave the
+        // moment someone has deliberately STATIONED them: "wait by the bed" then
+        // "check that chest" should not walk them across the base and leave the
         // post. The explicit instruction wins over the implied one, and an
         // explicit "go": true still overrides that if the journey is the point.
         //
         // Found the honest way: an operator who had read the change still did
-        // not expect a network call to relocate her. A default that surprises
+        // not expect a network call to relocate them. A default that surprises
         // someone who knows about it is too blunt.
         if (wantGo && !a.has("go")) {
             ghost.body.Body stationedBody = ghost.body.Bodies.find(server);
             if (stationedBody != null && stationedBody.stationed()) {
                 wantGo = false;
                 res.addProperty("stayedPut", true);
-                res.addProperty("note", "she is stationed, so I did this from "
-                        + "where she stands rather than leaving the post. "
-                        + "\"go\": true to send her anyway.");
+                res.addProperty("note", "they are stationed, so I did this from "
+                        + "where they stand rather than leaving the post. "
+                        + "\"go\": true to send them anyway.");
             }
         }
         if (wantGo && a.has("at") && !a.has("__arrived")) {
@@ -756,7 +756,7 @@ public final class Bridge {
             }
             // No body to send. Do it from here rather than refusing - the work
             // still needs doing, and saying so is better than silently pretending
-            // she went.
+            // they went.
             res.addProperty("noBody", true);
         }
 
@@ -840,13 +840,13 @@ public final class Bridge {
                 // buildinggadgets2:deny is a list for AREA tools - it stops a
                 // Destruction Gadget swinging through a room and eating things,
                 // which is a real risk because a gadget cannot be reasoned with.
-                // Shelby is not a gadget: she is handed ONE block by someone who
-                // typed the coordinate. Applying a tool's blacklist to her made
+                // Shelby is not a gadget: they are handed ONE block by someone who
+                // typed the coordinate. Applying a tool's blacklist to their made
                 // 400 ores unmineable to guard against a rare mistyped position,
                 // which is the wrong trade - it broke the ordinary job to
                 // prevent the unusual one.
                 //
-                // So she does the work and says loudly what it was. A wrong
+                // So they do the work and says loudly what it was. A wrong
                 // assignment becomes VISIBLE rather than silently prevented,
                 // which is the right shape for an assistant: check the job, then
                 // do it, and be honest about what you touched.
@@ -989,13 +989,13 @@ public final class Bridge {
                 // Send the body somewhere - and make it STICK.
                 //
                 // This used to set no posting at all, which meant the follow
-                // logic simply won. It runs once a second, sees she is further
-                // from the player than TELEPORT_AT, and steps her straight back.
+                // logic simply won. It runs once a second, sees they are further
+                // from the player than TELEPORT_AT, and steps them straight back.
                 // So a warp really did happen, was really undone a second later,
                 // and reported {"warped": true} - true at the instant it was
                 // written and worthless by the time anyone looked. A confident
-                // false success is worse than an error, so: post her first, then
-                // move her.
+                // false success is worse than an error, so: post their first, then
+                // move them.
                 BlockPos p = pos(a, "at");
                 ghost.body.Body body = ghost.body.Bodies.find(server);
                 if (body == null) {
@@ -1006,26 +1006,26 @@ public final class Bridge {
                 boolean warpFlag = a.has("warp") && a.get("warp").getAsBoolean();
                 if (body.level() != level) {
                     // A warp may cross; a walk may not. Refusing outright was
-                    // too blunt - "he is in the mining dimension and she is in
+                    // too blunt - "he is in the mining dimension and they are in
                     // the overworld" is an ordinary situation, and a teleport
                     // that will not teleport across a dimension is not much of
                     // a teleport. Walking there is still impossible, so that
                     // still refuses.
                     if (!warpFlag) {
                         res.addProperty("ok", false);
-                        res.addProperty("error", "she is in "
+                        res.addProperty("error", "they are in "
                                 + body.level().dimension().location() + ", not "
                                 + level.dimension().location()
-                                + " - she cannot walk between worlds. Use "
-                                + "\"warp\": true, or \"return\" and let her "
+                                + " - they cannot walk between worlds. Use "
+                                + "\"warp\": true, or \"return\" and let them "
                                 + "follow whoever is over there.");
                         break;
                     }
                     body.postTo(p, true);
                     // Deferred to the end of the tick and verified on arrival:
-                    // changeDimension removes her BEFORE building the
+                    // changeDimension removes them BEFORE building the
                     // replacement, so a failed crossing would otherwise delete
-                    // her and everything she carries.
+                    // them and everything they carry.
                     body.crossTo(level, new net.minecraft.world.phys.Vec3(
                             p.getX() + 0.5, p.getY(), p.getZ() + 0.5));
                     res.addProperty("ok", true);
@@ -1038,8 +1038,8 @@ public final class Bridge {
                     break;
                 }
                 // Stationed, not an errand: an errand clears itself on arrival
-                // and she would resume following, which for a target this far
-                // away means walking straight back. "return" releases her.
+                // and they would resume following, which for a target this far
+                // away means walking straight back. "return" releases them.
                 body.postTo(p, true);
 
                 boolean warp = warpFlag;
@@ -1050,12 +1050,12 @@ public final class Bridge {
                             .moveTo(p.getX() + 0.5, p.getY(), p.getZ() + 0.5, 1.0);
                     res.addProperty("pathing", started);
                     if (!started) {
-                        res.addProperty("note", "no path from here - she will keep "
-                                + "trying and step across on her own if she cannot "
+                        res.addProperty("note", "no path from here - they will keep "
+                                + "trying and step across on their own if they cannot "
                                 + "walk it");
                     }
                 }
-                // Report where she ACTUALLY is, not where she was told to go.
+                // Report where they ACTUALLY is, not where they were told to go.
                 // Every other claim in this reply is intent; this one is
                 // observation, and it is the only one worth trusting.
                 net.minecraft.core.BlockPos now = body.blockPosition();
@@ -1070,11 +1070,11 @@ public final class Bridge {
                     // teleport this says so instead of claiming victory.
                     res.addProperty("warped", off <= 2.0);
                     if (off > 2.0) {
-                        res.addProperty("error", "the teleport did not take - she is "
+                        res.addProperty("error", "the teleport did not take - they are "
                                 + Math.round(off) + " blocks from the target");
                     }
                 }
-                res.addProperty("holds", "she stays here until \"return\"");
+                res.addProperty("holds", "they stays here until \"return\"");
             }
             case "remember" -> {
                 // Naming a place once turns every later instruction into the
@@ -1123,7 +1123,7 @@ public final class Bridge {
                 res.addProperty("ok", true);
             }
             case "where" -> {
-                // Where is she standing right now - and is there only one of her.
+                // Where is they standing right now - and is there only one of them.
                 //
                 // This used to search a single level with a giant box and no
                 // isAlive filter, while every other verb used Bodies.find across
@@ -1136,8 +1136,21 @@ public final class Bridge {
                 res.addProperty("ok", body != null);
                 res.addProperty("bodies", bodies.size());
                 if (body == null) {
-                    res.addProperty("error", "no live body in any dimension - "
-                            + "/ghost body here");
+                    // NOT "in any dimension". This searches every level, but
+                    // level.getEntities only sees LOADED chunks - and measured
+                    // 2026-09-10, a body stops being visible within 2.6 seconds
+                    // of the player leaving its dimension. So "none found" is
+                    // the normal state for any body that is not standing next
+                    // to you, and claiming it does not exist anywhere is a
+                    // confident falsehood the caller cannot check.
+                    //
+                    // The old text also suggested "/ghost body here", which is
+                    // how you end up with a second body while the first stands
+                    // forgotten in another dimension.
+                    res.addProperty("error", "no body in a loaded chunk. Bodies in "
+                            + "other dimensions are invisible from here, so this is not "
+                            + "proof there is none - go to where you left them, or "
+                            + "/ghost body here to stand up a new one.");
                 } else {
                     BlockPos bp = body.blockPosition();
                     res.add("pos", JsonParser.parseString(
@@ -1147,7 +1160,7 @@ public final class Bridge {
                     res.addProperty("navDone", body.getNavigation().isDone());
                     res.addProperty("alive", body.isAlive());
                     res.addProperty("id", body.getId());
-                    // What she is TRYING to do. Without this a position is not
+                    // What they are TRYING to do. Without this a position is not
                     // diagnosable - a correct walk to a posting and an
                     // unexplained drift look exactly the same from outside, and
                     // every confusing movement tonight has been one or the other.
@@ -1160,8 +1173,8 @@ public final class Bridge {
                                 post.getX() + 0.5, post.getY(), post.getZ() + 0.5));
                         res.addProperty("postDistance", Math.round(away));
                         res.addProperty("doing", away <= 3.0
-                                ? "at her post"
-                                : "travelling to her post");
+                                ? "at their post"
+                                : "travelling to their post");
                     } else if (body.followedId() != null) {
                         res.addProperty("doing", "following a player");
                     } else {
@@ -1240,8 +1253,8 @@ public final class Bridge {
                 res.addProperty("ok", true);
             }
             case "post" -> {
-                // Station her somewhere until told otherwise. Unlike "go", this
-                // survives the end of the batch - for when the work is where she
+                // Station them somewhere until told otherwise. Unlike "go", this
+                // survives the end of the batch - for when the work is where they
                 // should be, not a errand to run and come back from.
                 ghost.body.Body body = ghost.body.Bodies.find(server);
                 BlockPos site = a.has("at") ? pos(a, "at") : anchor(server, level);
@@ -1510,8 +1523,8 @@ public final class Bridge {
                 res.addProperty("ok", Boolean.TRUE.equals(done.get("ok")));
             }
             case "undo" -> {
-                // The mulligan. She no longer refuses to touch anything, so the
-                // safety net is being able to take back the last thing she did
+                // The mulligan. They no longer refuses to touch anything, so the
+                // safety net is being able to take back the last thing they did
                 // rather than being stopped from doing it.
                 ServerPlayer who = requester(server, a);
                 if (!Perms.allows(who, Perms.Ability.WORLD)) {
@@ -1527,7 +1540,7 @@ public final class Bridge {
                 res.addProperty("ok", peek || Boolean.TRUE.equals(done.get("ok")));
             }
             case "crouch", "jump" -> {
-                // Real body states, not flags on a request. She physically
+                // Real body states, not flags on a request. They physically
                 // crouches or jumps, and the world gets to react to it the way
                 // it would for anyone else standing there.
                 ghost.body.Body body = ghost.body.Bodies.find(server);
@@ -1552,10 +1565,10 @@ public final class Bridge {
                     BlockPos under = body.blockPosition().below();
                     // Say WHICH of the two "no" cases this is.
                     //
-                    // destination() returns null both when she is not on an
-                    // elevator and when she is on one with no floor that way,
+                    // destination() returns null both when they are not on an
+                    // elevator and when they are on one with no floor that way,
                     // and reporting nothing for both made a correct search look
-                    // like a broken one: a tester standing her exactly on a
+                    // like a broken one: a tester standing their exactly on a
                     // confirmed elevator block got the identical empty result
                     // they had been getting from being a block off.
                     boolean onOne = Elevators.isElevator(lvl.getBlockState(under));
@@ -1563,7 +1576,7 @@ public final class Bridge {
                     BlockPos floor = onOne ? Elevators.destination(lvl, under, up) : null;
                     if (onOne && floor == null) {
                         res.addProperty("elevator", up ? "no floor above" : "no floor below");
-                        res.addProperty("note", "she is on "
+                        res.addProperty("note", "they are on "
                                 + net.minecraft.core.registries.BuiltInRegistries.BLOCK
                                         .getKey(lvl.getBlockState(under).getBlock())
                                 + " but there is no second elevator "
@@ -1681,12 +1694,12 @@ public final class Bridge {
         // action happened would drift across the base one job at a time and
         // never be where you are, which is the opposite of having one.
         //
-        // But NOT while she is still walking there. A batch finishes in a tick
+        // But NOT while they are still walking there. A batch finishes in a tick
         // or two and a walk takes seconds, so clearing unconditionally here
-        // cancelled the journey before she arrived - every short walk, the ones
+        // cancelled the journey before they arrived - every short walk, the ones
         // under the teleport threshold that actually go on foot, was recalled
-        // mid-transit and never completed. She now releases the post herself the
-        // moment she arrives, and gives up on her own after 90 seconds if she
+        // mid-transit and never completed. They now releases the post themselves the
+        // moment they arrive, and gives up on their own after 90 seconds if they
         // cannot, so nothing is left holding a stale posting either way.
         ghost.body.Body body = ghost.body.Bodies.find(server);
         if (body != null && !body.stationed() && !body.travelling()) {

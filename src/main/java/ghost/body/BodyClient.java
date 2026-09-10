@@ -37,7 +37,7 @@ public final class BodyClient {
      * Draws Shelby as a translucent player.
      *
      * <p>The vanilla player model rather than a bespoke one, because the point
-     * is that she reads as a person standing there - a custom shape would just
+     * is that they read as a person standing there - a custom shape would just
      * be another mob. The see-through comes from two things together: alpha
      * baked into the skin, and a translucent render type. Either alone gives a
      * solid figure.
@@ -49,7 +49,7 @@ public final class BodyClient {
 
         public BodyRenderer(EntityRendererProvider.Context ctx) {
             super(ctx, new PlayerModel<>(ctx.bakeLayer(ModelLayers.PLAYER), false), 0.0F);
-            // Armour draws solid rather than translucent like the rest of her.
+            // Armour draws solid rather than translucent like the rest of them.
             // The point of putting clothes on is seeing them, and see-through
             // gear over a see-through body would read as nothing at all.
             addLayer(new HumanoidArmorLayer<>(this,

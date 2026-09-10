@@ -81,7 +81,7 @@ final class Elevators {
     /**
      * Where the body should end up, standing on that floor.
      *
-     * <p>Returns null when there is no room to stand, rather than posting her
+     * <p>Returns null when there is no room to stand, rather than posting them
      * into a ceiling - the mod does its own safety check and so should this.
      */
     static BlockPos standingSpot(ServerLevel level, BlockPos elevator) {

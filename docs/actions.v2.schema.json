@@ -442,7 +442,7 @@
     },
     {
      "title": "where",
-     "description": "Report her own position, dimension and what she is doing.",
+     "description": "Report their own position, dimension and what they are doing.",
      "type": "object",
      "properties": {
       "do": {
@@ -505,7 +505,7 @@
     },
     {
      "title": "post",
-     "description": "Station her at a position until released.",
+     "description": "Station them at a position until released.",
      "type": "object",
      "properties": {
       "do": {
@@ -967,7 +967,7 @@
     },
     {
      "title": "bag",
-     "description": "List what is in her satchel.",
+     "description": "List what is in their satchel.",
      "type": "object",
      "properties": {
       "do": {
@@ -994,7 +994,7 @@
     },
     {
      "title": "worn",
-     "description": "Report the armour she is wearing.",
+     "description": "Report the armour they are wearing.",
      "type": "object",
      "properties": {
       "do": {
@@ -1021,7 +1021,7 @@
     },
     {
      "title": "take",
-     "description": "Move items from a container slot into her satchel.",
+     "description": "Move items from a container slot into their satchel.",
      "type": "object",
      "properties": {
       "do": {
@@ -1067,7 +1067,7 @@
     },
     {
      "title": "put",
-     "description": "Move items from her satchel into a container slot.",
+     "description": "Move items from their satchel into a container slot.",
      "type": "object",
      "properties": {
       "do": {
@@ -1219,7 +1219,7 @@
     },
     {
      "title": "withdraw",
-     "description": "Pull items out of the ME network into her satchel.",
+     "description": "Pull items out of the ME network into their satchel.",
      "type": "object",
      "properties": {
       "do": {
@@ -1264,7 +1264,7 @@
     },
     {
      "title": "deposit",
-     "description": "Push items from her satchel into the ME network.",
+     "description": "Push items from their satchel into the ME network.",
      "type": "object",
      "properties": {
       "do": {

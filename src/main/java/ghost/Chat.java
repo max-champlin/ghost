@@ -32,7 +32,7 @@ public final class Chat {
     }
 
     /**
-     * Names she answers to, matched ANYWHERE in a line.
+     * Names they answers to, matched ANYWHERE in a line.
      *
      * <p>This used to require the name to lead the sentence, which meant
      * "Shelby, check the farm" worked and "can you check the farm, Shelby"
@@ -41,8 +41,8 @@ public final class Chat {
      * follows the speech rather than the other way round.
      *
      * <p>Matched on word boundaries, so a name inside a longer word does not
-     * count. On a busy server this will also catch players talking ABOUT her
-     * rather than TO her; that is the accepted cost of being addressable the way
+     * count. On a busy server this will also catch players talking ABOUT them
+     * rather than TO them; that is the accepted cost of being addressable the way
      * a person is, and the ack makes a false positive obvious rather than silent.
      */
     private static final String[] NAMES = {"shelby", "claude"};
@@ -204,7 +204,7 @@ public final class Chat {
      * always get there, the wording follows how: walking is only claimed when
      * walking is what will happen.
      *
-     * <p>Also binds her to whoever just spoke, so she keeps up with the person
+     * <p>Also binds them to whoever just spoke, so they keep up with the person
      * having the conversation rather than the nearest body heat.
      */
     private static String approach(ServerPlayer player) {
@@ -229,7 +229,7 @@ public final class Chat {
     /**
      * Drop the name so the echo is the actual request.
      *
-     * <p>Only where the name is being USED to address her - the front of the
+     * <p>Only where the name is being USED to address them - the front of the
      * line ("Shelby, check the farm") or the end ("check the farm, Shelby").
      * A name in the middle is usually part of the sentence's meaning, and
      * cutting it there turns "tell Shelby the farm is done" into something

@@ -48,7 +48,7 @@ public final class Bodies {
      *
      * <p>Searches every dimension, not just the one the asker is standing in.
      * Callers used to look only in the player's own level, which reported "no
-     * body" the moment she was a portal away - and then said so in chat, which
+     * body" the moment they were a portal away - and then said so in chat, which
      * is worse than saying nothing.
      */
     /**
@@ -61,8 +61,8 @@ public final class Bodies {
      * alive. Two verbs could therefore be talking about two different entities
      * while both reported confidently.
      *
-     * <p>Reported by {@code where} so that "she is at X" can be checked against
-     * "and there is only one of her".
+     * <p>Reported by {@code where} so that "they are at X" can be checked against
+     * "and there is only one of them".
      */
     public static java.util.List<Body> all(net.minecraft.server.MinecraftServer server) {
         java.util.List<Body> out = new java.util.ArrayList<>();

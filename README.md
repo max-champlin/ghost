@@ -99,10 +99,10 @@ and hoped for:
   them back. Not by driving a terminal GUI slot by slot — through AE2's storage
   API.
 - **Followed a player into another dimension**, and crossed on request.
-- **Wears armour you hand her**, and reports its durability when you ask.
+- **Wears armour you hand them**, and reports its durability when you ask.
 - **Gets picked up with Carry On** and carried to a job.
 
-That last one is not a feature anybody wrote. It works because she is an entity
+That last one is not a feature anybody wrote. It works because they are an entity
 in the world rather than a client pretending to be one, and that difference is
 the whole point.
 
@@ -259,7 +259,7 @@ ollama pull qwen2.5:7b
 python drive.py --ghost "<instance>/ghost" --model qwen2.5:7b
 ```
 
-Then talk to her in chat. `drive.py` watches `ghost/asks.jsonl`, asks the model
+Then talk to them in chat. `drive.py` watches `ghost/asks.jsonl`, asks the model
 what to do, writes the action, waits for the result, and hands the result back so
 the model can answer you. It is one file, no dependencies, ~180 lines - short
 enough to read before you trust it with a world.
@@ -474,7 +474,7 @@ a `ModList` check so Ghost runs fine without it.
 
 Destructive verbs do **not** carry a can't-touch list. An earlier version
 honoured `buildinggadgets2:deny` on single-block `break`, which sounded prudent
-and meant she could not mine any of the 400 ores that tag covers.
+and meant they could not mine any of the 400 ores that tag covers.
 
 The reasoning that replaced it: that tag exists for **area tools** — a
 Destruction Gadget sweeps a room and cannot be reasoned with, so a blacklist is

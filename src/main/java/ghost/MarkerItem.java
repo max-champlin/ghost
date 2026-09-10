@@ -17,7 +17,7 @@ import net.minecraft.world.entity.player.Player;
  * off F3 and relayed. That is the single biggest source of wasted time in
  * driving it: an agent cannot see, so it either guesses a position or asks, and
  * a mistyped digit looks exactly like a bug in whatever verb used it. An evening
- * was lost to "is she on the elevator or one block off".
+ * was lost to "is they on the elevator or one block off".
  *
  * <p>So: name this in an anvil, right-click a block, and that block becomes a
  * named place the agent can use by name forever. {@code {"do":"goto","at":"elevator"}}
