@@ -111,6 +111,30 @@ final class Ae2Direct {
             }
             return execute(storage, source, plan, result, batches, per, requester);
         }
+        // One level was not enough. Before giving up, resolve the whole tree:
+        // the missing ingredients are usually themselves two or three ordinary
+        // recipes from something the network holds in bulk.
+        Ae2Deep.Deep deep = Ae2Deep.plan(level, storage, want, amount);
+        if (deep.ok()) {
+            String how = deep.steps.size() > 1
+                    ? " (" + String.join(", then ", deep.steps) + ")" : "";
+            if (checkOnly) {
+                return "I can make " + amount + "x " + want.getDescription().getString()
+                        + " by hand in " + deep.steps.size() + " steps" + how
+                        + ", using " + describe(deep.leaves) + ". Nothing has been taken.";
+            }
+            String failed = Ae2Deep.execute(storage, source, deep, want, amount);
+            if (failed != null) {
+                return failed;
+            }
+            return "Made " + amount + "x " + want.getDescription().getString()
+                    + " by hand in " + deep.steps.size() + " steps" + how + ".";
+        }
+        if (deep.missing != null && shortfall == null) {
+            shortfall = "I cannot manage " + want.getDescription().getString()
+                    + " by hand, even working back through its ingredients. "
+                    + "You are short of " + deep.missing + ".";
+        }
         return shortfall != null ? shortfall
                 : "I could not contrive a way to make that from what the network holds.";
     }

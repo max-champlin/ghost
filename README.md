@@ -2,6 +2,16 @@
 
 **An in-process bridge that gives an AI agent real access to a *modded* Minecraft world — including mod APIs a protocol-level bot cannot reach.**
 
+> **Status: work in progress, and usable today.** This runs daily on a 618-mod
+> 1.21.1 pack and does real work there — it planned and executed a 3,087-item
+> crafting tree this week, and audited 3,092 farmland columns to find 38 gaps.
+> It is *not* packaged for Modrinth or CurseForge, the API will move without
+> ceremony, and every destructive verb should be treated as something to test
+> on a copy of your world first. Build it, point an agent at it, read
+> [`docs/actions.v2.schema.json`](docs/actions.v2.schema.json), and expect
+> sharp edges. See [Status](#status) for exactly what has been verified by
+> observation and what has not.
+
 ---
 
 # This is not an AI NPC.
@@ -552,8 +562,35 @@ of a Minecraft config.
 
 ## Status
 
-Working and in daily use on a 613-mod Minecraft 1.21.1 pack. Not yet released to
-Modrinth or CurseForge.
+Working and in daily use on a 618-mod Minecraft 1.21.1 pack. Not yet released to
+Modrinth or CurseForge, and the verb contract is still free to change.
+
+### Crafting a whole tree, and the dry run that paid for itself
+
+`craft` no longer stops one recipe down. Asked for something the network cannot
+pay for directly, it resolves the entire tree to items the network actually
+holds **before anything moves** - through a reservation ledger, so two branches
+cannot both spend the same diamonds, and a cycle guard, because Mystical
+Agriculture converts essence in *both* directions and a naive planner descends
+forever.
+
+Verified at scale: **3,087 Inferium Growth Accelerators in 37 steps**, walking
+Insanium down five tiers to Inferium and diamonds out to Prosperity Gemstones.
+Measured against a before/after reading of the network, it consumed exactly what
+it predicted - 4,116 stone, 2,058 diamonds, 6 Insanium - and touched nothing
+else.
+
+The `check: true` dry run is not decoration. The same craft attempted an hour
+earlier, when the network was 1,720 stone short, came back `ok` - and the step
+list showed it intended to cover the gap by *manufacturing diorite, granite and
+andesite*, because the recipe's stone slot is the `#c:stones` tag and those are
+cobblestone plus **nether quartz**. It would have quietly eaten a quartz supply
+to make decorative rock. Nothing had moved, because nothing was asked to move
+yet. Read the step list, not just the `ok`.
+
+That is the general lesson this bridge keeps relearning: an answer that is
+*true* can still be the wrong thing to act on. See also the `undo` restore-order
+bug below, and `report measured, not intended` throughout.
 
 **Verified by observation**, with a second agent session driving the bridge and a
 player watching: reads, travel and the action delay, the satchel round trip,
