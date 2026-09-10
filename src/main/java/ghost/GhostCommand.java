@@ -405,20 +405,50 @@ public final class GhostCommand {
         // a replacement", and losing a suit of someone's armour to that is not
         // a defensible default. Reported the hard way: a full Spider-Man set,
         // twice in one evening.
+        // ONE SHELBY PER PLAYER, and never touch anyone else's.
+        //
+        // This used to discard every body in every dimension and carry the kit
+        // from whichever one it happened to find first. With a single body that
+        // is merely blunt; with two it is destructive, because discard is a
+        // silent removal - the second body's armour and satchel are deleted
+        // with nothing dropped and nothing said. On a server it would mean one
+        // player's "body here" quietly stripping another player's Shelby.
+        //
+        // So: only bodies this player owns are candidates, exactly one of them
+        // is replaced, and anything else is left standing and reported.
+        net.minecraft.server.level.ServerPlayer owner = src.getPlayer();
+        java.util.UUID ownerId = owner == null ? null : owner.getUUID();
+        // A body with no owner is adoptable - every body predating this rule
+        // has none, and refusing them would strand them and their gear.
+        java.util.List<ghost.body.Body> mine =
+                ghost.body.Bodies.owned(src.getServer(), ownerId, true);
+        int othersLeft = ghost.body.Bodies.notOwned(src.getServer(), ownerId).size();
+
         net.minecraft.nbt.CompoundTag kit = null;
-        for (ghost.body.Body b : ghost.body.Bodies.all(src.getServer())) {
-            if (kit == null && !"away".equals(mode)) {
+        for (ghost.body.Body b : mine) {
+            if (kit == null) {
                 kit = new net.minecraft.nbt.CompoundTag();
                 b.saveWithoutId(kit);
+                b.discard();
+                removed++;
+            } else {
+                // A second body of your own: leave it alone rather than delete
+                // it. "where" reports the count so it can be dealt with on
+                // purpose, in the dimension it is actually standing in.
+                break;
             }
-            b.discard();
-            removed++;
         }
+        if ("away".equals(mode)) {
+            kit = null;              // away means gone; nothing to carry across
+        }
+        final int strays = Math.max(0, mine.size() - removed);
+        final int others = othersLeft;
         if ("away".equals(mode)) {
             final int n = removed;
             src.sendSuccess(() -> Component.literal(n > 0
-                    ? "Shelby: body away (" + n + ")"
-                    : "Shelby: there is no body to send away."), false);
+                    ? "Shelby: body away (" + n + ")" + tail(strays, others)
+                    : "Shelby: there is no body of yours to send away."
+                      + tail(strays, others)), false);
             return 1;
         }
         ghost.body.Body b = ghost.body.Bodies.SHELBY.get().create(level);
@@ -432,13 +462,19 @@ public final class GhostCommand {
             src.sendFailure(Component.literal("Shelby: I could not place a body here."));
             return 0;
         }
+        // Claim it. This is what makes "one Shelby per player" true rather than
+        // aspirational: from here on she is only ever a candidate for this
+        // player's own "body here", and never for anyone else's.
+        if (ownerId != null) {
+            b.setFollowed(ownerId);
+        }
         // Move the kit across. Position, posting and dimension deliberately are
         // NOT carried - the whole point of the command is to put her somewhere
         // else - so only the things she owns come with her.
         final int moved = carryOver(kit, b);
-        src.sendSuccess(() -> Component.literal(moved > 0
+        src.sendSuccess(() -> Component.literal((moved > 0
                 ? "Shelby: standing up (brought " + moved + " item" + (moved == 1 ? "" : "s") + ")"
-                : "Shelby: standing up"), false);
+                : "Shelby: standing up") + tail(strays, others)), false);
         return 1;
     }
 
@@ -447,6 +483,25 @@ public final class GhostCommand {
      *
      * @return how many stacks came across, for the confirmation message
      */
+    /**
+     * What was deliberately NOT touched.
+     *
+     * <p>Silence here is how a second body becomes a mystery: the verbs act on
+     * one of them, "where" reports a confident position for a body you cannot
+     * see, and nothing ever said there was more than one.
+     */
+    private static String tail(int strays, int others) {
+        StringBuilder sb = new StringBuilder();
+        if (strays > 0) {
+            sb.append(" - ").append(strays).append(" more of yours still standing elsewhere");
+        }
+        if (others > 0) {
+            sb.append(strays > 0 ? "," : " -").append(' ')
+              .append(others).append(" belonging to someone else, left alone");
+        }
+        return sb.toString();
+    }
+
     private static int carryOver(net.minecraft.nbt.CompoundTag kit, ghost.body.Body fresh) {
         if (kit == null) {
             return 0;

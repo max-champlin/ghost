@@ -565,6 +565,39 @@ of a Minecraft config.
 Working and in daily use on a 618-mod Minecraft 1.21.1 pack. Not yet released to
 Modrinth or CurseForge, and the verb contract is still free to change.
 
+### Multiplayer: one Shelby per player, and NOT yet tested on a server
+
+Every hour Ghost has ever run has been single-player. Treat multiplayer as
+unverified — not "probably fine", **untested**.
+
+One rule is now enforced rather than assumed: **a body belongs to the player who
+stood it up.** Ownership is the `Follow` UUID the body already persisted, and
+`/ghost body here` will only ever replace one of *your* bodies. It will not touch
+anyone else's, and it no longer discards extra bodies at all.
+
+That last part was a real bug, not a precaution. `body here` used to clear every
+body in every dimension while carrying the kit from whichever it found first —
+so a second body somewhere else had its armour and satchel **deleted silently**,
+because `discard()` never fires `setGuaranteedDrop` and nothing lands on the
+floor. With one body that is merely blunt. With two it destroys gear, and on a
+server it would have been one player's command stripping another player's
+Shelby. Now the extras are left standing and reported in the response.
+
+What is still single-driver, and the reason a server needs real testing before
+anyone trusts it:
+
+- **The bridge is a singleton pipeline.** One inbox directory, and `pendingGo` /
+  `pendingAct` / `pendingWait` are static — *one* action in flight for the whole
+  server. Two players driving two bodies contend for one slot.
+- **Most verbs still call `Bodies.find(server)`**, which returns the first live
+  body in level-iteration order rather than the caller's. Ownership exists; the
+  verbs do not consult it yet.
+- **`anchor()` takes position from the body and dimension from the player.**
+  They agree today because both resolve to the same place. They are not
+  guaranteed to.
+
+Per-player request queues are the next piece of work. Until then, run one driver.
+
 ### Crafting a whole tree, and the dry run that paid for itself
 
 `craft` no longer stops one recipe down. Asked for something the network cannot

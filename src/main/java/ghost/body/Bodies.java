@@ -92,4 +92,44 @@ public final class Bodies {
         }
         return null;
     }
+
+    /**
+     * The bodies belonging to one player - <b>one Shelby each</b>.
+     *
+     * <p>Ownership is the {@code Follow} UUID, which the body already persists.
+     * A body with no owner is treated as <i>adoptable</i> rather than
+     * everyone's: every body that existed before this rule was written is
+     * ownerless, and refusing to claim them would have stranded them and their
+     * armour permanently.
+     *
+     * <p>Deliberately reads {@link Body#followedId()} and not
+     * {@link Body#followed()}. The latter falls back to the nearest player and
+     * then to <i>anyone on the server</i>, so a body whose owner is offline
+     * would appear to belong to whoever happened to be standing closest - which
+     * is precisely the confusion this is meant to end.
+     */
+    public static java.util.List<Body> owned(net.minecraft.server.MinecraftServer server,
+                                             java.util.UUID owner, boolean includeUnowned) {
+        java.util.List<Body> out = new java.util.ArrayList<>();
+        for (Body b : all(server)) {
+            java.util.UUID id = b.followedId();
+            if (id == null ? includeUnowned : id.equals(owner)) {
+                out.add(b);
+            }
+        }
+        return out;
+    }
+
+    /** Bodies belonging to somebody else. Never to be discarded on their behalf. */
+    public static java.util.List<Body> notOwned(net.minecraft.server.MinecraftServer server,
+                                                java.util.UUID owner) {
+        java.util.List<Body> out = new java.util.ArrayList<>();
+        for (Body b : all(server)) {
+            java.util.UUID id = b.followedId();
+            if (id != null && !id.equals(owner)) {
+                out.add(b);
+            }
+        }
+        return out;
+    }
 }
