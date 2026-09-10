@@ -424,22 +424,41 @@ public final class GhostCommand {
                 ghost.body.Bodies.owned(src.getServer(), ownerId, true);
         int othersLeft = ghost.body.Bodies.notOwned(src.getServer(), ownerId).size();
 
-        net.minecraft.nbt.CompoundTag kit = null;
+        // WHICH of your bodies, when you have more than one.
+        //
+        // "the first one in the list" is level-iteration order, which is
+        // Overworld first - so standing in the Twilight Forest with a body in
+        // each, "body here" replaced the one in the Overworld and left the one
+        // in front of you untouched. Observed 2026-09-10: two Shelbys ended up
+        // in the same room, and "body away" would have dismissed the one in the
+        // other dimension. That also made `where`'s own advice - "body here in
+        // the dimension you want, then body away in the other" - do the
+        // opposite of what it says.
+        //
+        // So prefer the body in the level the command was run in.
+        ghost.body.Body chosen = null;
         for (ghost.body.Body b : mine) {
-            if (kit == null) {
-                kit = new net.minecraft.nbt.CompoundTag();
-                b.saveWithoutId(kit);
-                b.discard();
-                removed++;
-            } else {
-                // A second body of your own: leave it alone rather than delete
-                // it. "where" reports the count so it can be dealt with on
-                // purpose, in the dimension it is actually standing in.
+            if (b.level() == level) {
+                chosen = b;
                 break;
             }
         }
-        if ("away".equals(mode)) {
-            kit = null;              // away means gone; nothing to carry across
+        if (chosen == null && !"away".equals(mode) && !mine.isEmpty()) {
+            // "here" means COME HERE, so with nothing in this dimension it is
+            // right to fetch one from another and bring its kit along.
+            chosen = mine.get(0);
+        }
+        // "away" deliberately has no such fallback. Dismissing a body standing
+        // in a dimension you are not in is not something a command called
+        // "away" should ever do quietly.
+        net.minecraft.nbt.CompoundTag kit = null;
+        if (chosen != null) {
+            if (!"away".equals(mode)) {
+                kit = new net.minecraft.nbt.CompoundTag();
+                chosen.saveWithoutId(kit);
+            }
+            chosen.discard();
+            removed++;
         }
         final int strays = Math.max(0, mine.size() - removed);
         final int others = othersLeft;
@@ -447,7 +466,7 @@ public final class GhostCommand {
             final int n = removed;
             src.sendSuccess(() -> Component.literal(n > 0
                     ? "Shelby: body away (" + n + ")" + tail(strays, others)
-                    : "Shelby: there is no body of yours to send away."
+                    : "Shelby: no body of yours in this dimension to send away."
                       + tail(strays, others)), false);
             return 1;
         }
