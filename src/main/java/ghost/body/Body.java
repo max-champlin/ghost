@@ -427,6 +427,82 @@ public class Body extends PathfinderMob {
         }
     }
 
+    // --- the roster: staying findable while unloaded -----------------------
+
+    /** Throttle. The record only has to be good enough to find them again. */
+    private int rosterTick;
+
+    /**
+     * Keep {@link Roster} pointing at where they actually are.
+     *
+     * <p>Cheap on purpose - once every ten seconds, and {@link Roster#put}
+     * returns without dirtying the file when nothing moved.
+     */
+    private void noteWhereIAm() {
+        if (level().isClientSide || getServer() == null || followedId() == null) {
+            return;
+        }
+        if (++rosterTick % 200 != 0) {
+            return;
+        }
+        Roster.of(getServer()).put(followedId(), level().dimension(),
+                blockPosition(), getUUID());
+    }
+
+    /**
+     * Forget the record only when they are really gone.
+     *
+     * <p>The reason matters enormously. {@code UNLOADED_TO_CHUNK} and
+     * {@code UNLOADED_WITH_PLAYER} are the everyday case this whole class exists
+     * to survive - clearing on those would delete the record every time the
+     * player walks away, which is the bug rather than the fix.
+     * {@code CHANGED_DIMENSION} is also a removal: {@code Entity.changeDimension}
+     * removes the entity and re-adds it on the other side, so treating that as
+     * death would lose them the moment they followed anyone through a portal.
+     */
+    @Override
+    public void remove(RemovalReason reason) {
+        if (!level().isClientSide && getServer() != null && followedId() != null
+                && (reason == RemovalReason.KILLED || reason == RemovalReason.DISCARDED)) {
+            Roster.of(getServer()).clear(followedId());
+        }
+        super.remove(reason);
+    }
+
+    /**
+     * Spill everything they are carrying onto the floor.
+     *
+     * <p>{@code discard()} is a silent removal - {@code setGuaranteedDrop} never
+     * fires and nothing lands. That is correct for {@code body here}, which
+     * carries the kit across to the new body, and it was quietly destructive for
+     * {@code body away}, which carried it nowhere. Armour and a full satchel
+     * simply ceased to exist.
+     */
+    public int spill() {
+        if (level().isClientSide) {
+            return 0;
+        }
+        int dropped = 0;
+        for (net.minecraft.world.entity.EquipmentSlot slot
+                : net.minecraft.world.entity.EquipmentSlot.values()) {
+            ItemStack st = getItemBySlot(slot);
+            if (!st.isEmpty()) {
+                spawnAtLocation(st.copy());
+                setItemSlot(slot, ItemStack.EMPTY);
+                dropped++;
+            }
+        }
+        for (int i = 0; i < bag.getContainerSize(); i++) {
+            ItemStack st = bag.getItem(i);
+            if (!st.isEmpty()) {
+                spawnAtLocation(st.copy());
+                bag.setItem(i, ItemStack.EMPTY);
+                dropped++;
+            }
+        }
+        return dropped;
+    }
+
     // --- who we are following --------------------------------------------
 
     /** Bind to a particular player - used when someone addresses them in chat. */
@@ -514,6 +590,7 @@ public class Body extends PathfinderMob {
 
     @Override
     public void aiStep() {
+        noteWhereIAm();
         super.aiStep();
         if (!level().isClientSide && hovering) {
             holdStation();

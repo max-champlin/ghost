@@ -448,18 +448,44 @@ public final class GhostCommand {
             // right to fetch one from another and bring its kit along.
             chosen = mine.get(0);
         }
+        // THE UNLOADED ONE.
+        //
+        // Everything above only sees loaded chunks, so a body left in another
+        // dimension is invisible and "you have none" is the wrong answer - it
+        // is how three Shelbys ended up standing on the same spot. The roster
+        // survives unloading; if it says one exists, pull its chunk in and use
+        // it rather than standing up a duplicate.
+        if (chosen == null && ownerId != null) {
+            ghost.body.Roster roster = ghost.body.Roster.of(src.getServer());
+            ghost.body.Body remembered = roster.resolve(src.getServer(), ownerId);
+            if (remembered != null) {
+                chosen = remembered;
+            } else if (roster.get(ownerId) != null) {
+                // The record outlived the body. Drop it rather than letting a
+                // stale row block every future "body here".
+                roster.clear(ownerId);
+            }
+        }
         // "away" deliberately has no such fallback. Dismissing a body standing
         // in a dimension you are not in is not something a command called
         // "away" should ever do quietly.
         net.minecraft.nbt.CompoundTag kit = null;
+        int spilled = 0;
         if (chosen != null) {
-            if (!"away".equals(mode)) {
+            if ("away".equals(mode)) {
+                // Put down what they were carrying FIRST. discard() drops
+                // nothing, so "away" used to delete a suit of armour and a full
+                // satchel without a word - the same silent loss "here" was
+                // fixed for this afternoon, on the path nobody had tested.
+                spilled = chosen.spill();
+            } else {
                 kit = new net.minecraft.nbt.CompoundTag();
                 chosen.saveWithoutId(kit);
             }
             chosen.discard();
             removed++;
         }
+        final int dropped = spilled;
         final java.util.List<ghost.body.Body> strayList = new java.util.ArrayList<>();
         for (ghost.body.Body b : mine) {
             if (b != chosen && b.isAlive()) {
@@ -470,7 +496,10 @@ public final class GhostCommand {
         if ("away".equals(mode)) {
             final int n = removed;
             src.sendSuccess(() -> Component.literal(n > 0
-                    ? "Shelby: body away (" + n + ")" + tail(strayList, level, others)
+                    ? "Shelby: body away (" + n + ")"
+                      + (dropped > 0 ? " - dropped " + dropped + " item"
+                                       + (dropped == 1 ? "" : "s") + " on the floor" : "")
+                      + tail(strayList, level, others)
                     : "Shelby: no body of yours in this dimension to send away."
                       + tail(strayList, level, others)), false);
             return 1;
@@ -491,6 +520,12 @@ public final class GhostCommand {
         // player's own "body here", and never for anyone else's.
         if (ownerId != null) {
             b.setFollowed(ownerId);
+            // Record it immediately. Waiting for the next aiStep would leave a
+            // ten-second window in which the body exists and nothing remembers
+            // it - and that window is exactly when someone runs the command
+            // again.
+            ghost.body.Roster.of(src.getServer())
+                    .put(ownerId, level.dimension(), b.blockPosition(), b.getUUID());
         }
         // Move the kit across. Position, posting and dimension deliberately are
         // NOT carried - the whole point of the command is to put them somewhere
