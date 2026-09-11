@@ -52,7 +52,23 @@ then `Bodies.owned(...)`. `find()` stays only as the no-owner fallback.
 
 ## 2. The bridge is a singleton pipeline
 
-**Severity: high — it is the multiplayer blocker.**
+**FIXED 2026-09-11.** Every piece of per-actor state moved from `Bridge` statics
+onto `Lane`, keyed by owner uuid, with `Roster.UNOWNED` for console-driven work.
+`tick()` is now a round-robin dispatcher over lanes; `tickLane()` is the old
+state machine with its priority order **unchanged** — verified by diffing the
+branch order against the pre-refactor file. Design note: `docs/lanes.md`.
+
+Routing: an explicit `as` wins, on the batch or its first action; otherwise the
+existing `requester()` rule decides, so the lane and the body cannot disagree
+about who is acting. A batch is never split across lanes, and a lane that is
+still working holds the next batch **in memory** rather than bouncing the file
+in and out of the inbox every tick.
+
+**Still not tested against two real players.** The safety property is that with
+exactly one lane behaviour is identical to before, which single-player does
+exercise. That is evidence, not proof.
+
+**Original severity: high — it was the multiplayer blocker.**
 
 One inbox directory, and the in-flight state is static:
 

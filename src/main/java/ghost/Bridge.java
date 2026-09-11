@@ -72,8 +72,6 @@ public final class Bridge {
      * window and then read a sweep mid-flight on the same afternoon, and both
      * looked like results rather than mistakes.
      */
-    private static JsonObject pendingWait;
-    private static long waitDeadline;
 
     /**
      * An action parked until Shelby has physically got to where it happens.
@@ -87,8 +85,6 @@ public final class Bridge {
      * walked between every step would turn a second of work into ten minutes,
      * so presence is for the things worth watching, and speed is for the rest.
      */
-    private static JsonObject pendingGo;
-    private static long goDeadline;
 
     /**
      * An action that has been reached for but not yet done.
@@ -99,8 +95,6 @@ public final class Bridge {
      * exactly the "looks at you and poops out a block" problem. Four tenths of a
      * second is enough to see cause and effect in the right order.
      */
-    private static JsonObject pendingAct;
-    private static long actAt;
 
     /** Ticks between reaching for a thing and the thing happening. */
     private static final int BEAT = 8;
@@ -134,16 +128,25 @@ public final class Bridge {
     /** Longest they may spend travelling before the action happens anyway. */
     private static final int TRAVEL_TIMEOUT = 600;
 
-    private static final Deque<JsonObject> QUEUE = new ArrayDeque<>();
-    private static final JsonArray RESULTS = new JsonArray();
-    private static int waitTicks = 0;
-    private static int batches = 0;
+    /**
+     * One lane per actor. See {@code docs/lanes.md}.
+     *
+     * <p>Insertion-ordered so round-robin is stable and a lane cannot be
+     * starved by map rehashing.
+     */
+    private static final java.util.Map<java.util.UUID, Lane> LANES =
+            new java.util.LinkedHashMap<>();
+
+    /** The lane for an owner, created on demand. */
+    private static Lane lane(java.util.UUID owner) {
+        return LANES.computeIfAbsent(owner == null ? ghost.body.Roster.UNOWNED : owner,
+                Lane::new);
+    }
 
     /**
      * Which request the batch in flight belongs to, so its answer can be
      * addressed back rather than dropped in a shared pigeonhole.
      */
-    private static String currentId = null;
 
     private Bridge() {
     }
@@ -155,8 +158,8 @@ public final class Bridge {
     public static void arm(boolean on) {
         armed = on;
         if (!on) {
-            QUEUE.clear();
-            waitTicks = 0;
+            // Disarming drops every lane's work, not just one person's.
+            LANES.clear();
         }
     }
 
@@ -167,13 +170,20 @@ public final class Bridge {
      * rather than only in a log file.
      */
     public static boolean busy() {
-        return !QUEUE.isEmpty() || pendingWait != null;
+        return LANES.values().stream().anyMatch(l -> !l.queue.isEmpty() || l.inFlight());
     }
 
     public static String status() {
+        int queued = 0;
+        int run = 0;
+        for (Lane l : LANES.values()) {
+            queued += l.queue.size();
+            run += l.batches;
+        }
         return (armed ? "ARMED" : "disarmed")
-                + ", queue " + QUEUE.size()
-                + ", batches run " + batches;
+                + ", lanes " + LANES.size()
+                + ", queue " + queued
+                + ", batches run " + run;
     }
 
     private static Path inbox() {
@@ -211,49 +221,78 @@ public final class Bridge {
         return Sampler.dir().resolve("outbox.jsonl");
     }
 
+    /**
+     * Dispatch. One step per lane per tick, round-robin.
+     *
+     * <p>A lane blocked on travel or a {@code waitFor} yields immediately, so a
+     * slow lane costs the others one map lookup per tick rather than their turn.
+     */
     public static void tick(MinecraftServer server) {
         if (!armed) {
             return;
         }
-        if (waitTicks > 0) {
-            waitTicks--;
+        // Take at most one file per tick, so a burst of requests cannot stall a
+        // tick reading them all.
+        pickUpInbox(server);
+        if (LANES.isEmpty()) {
             return;
         }
-        if (pendingAct != null) {
-            if (server.overworld().getGameTime() < actAt) {
+        for (Lane lane : new java.util.ArrayList<>(LANES.values())) {
+            tickLane(server, lane);
+        }
+        // Drop lanes that have nothing left, so the map does not grow by one
+        // entry for every player who has ever connected.
+        LANES.values().removeIf(Lane::idle);
+    }
+
+    /**
+     * One actor's state machine.
+     *
+     * <p>This is the body of the old {@code tick}, unchanged in order or
+     * meaning: a plain delay, then an action waiting out its beat, then a
+     * journey, then a {@code waitFor}, then the next thing off the queue. Only
+     * the variables moved, from statics onto {@link Lane}.
+     */
+    private static void tickLane(MinecraftServer server, Lane lane) {
+        if (lane.waitTicks > 0) {
+            lane.waitTicks--;
+            return;
+        }
+        if (lane.pendingAct != null) {
+            if (server.overworld().getGameTime() < lane.actAt) {
                 return;                       // mid-reach; let it land
             }
-            JsonObject act = pendingAct;
-            pendingAct = null;
+            JsonObject act = lane.pendingAct;
+            lane.pendingAct = null;
             JsonObject res = new JsonObject();
             res.addProperty("action", act.has("do") ? act.get("do").getAsString() : "?");
             res.addProperty("travelled", true);
-            String[] before = snapshotBody(server);
+            String[] before = snapshotBody(server, lane);
             try {
-                run(server, act, res);
+                run(server, act, res, lane);
             } catch (Exception e) {
                 res.addProperty("ok", false);
                 res.addProperty("error", String.valueOf(e));
-                explain(e, res, server, before);
+                explain(e, res, server, before, lane);
                 Ghost.LOG.error("bridge action failed after the beat: {}", act, e);
             }
             note(res);
-            RESULTS.add(res);
-            if (QUEUE.isEmpty() && !inFlight()) {
-                finish(server);
+            lane.results.add(res);
+            if (lane.queue.isEmpty() && !lane.inFlight()) {
+                finish(server, lane);
             }
             return;
         }
-        if (pendingGo != null) {
-            ServerLevel lvl = level(server, pendingGo);
-            ghost.body.Body body = currentBody(server);
+        if (lane.pendingGo != null) {
+            ServerLevel lvl = level(server, lane.pendingGo);
+            ghost.body.Body body = currentBody(server, lane);
             boolean there = body == null || body.arrived(ARRIVED_WITHIN);
-            boolean expired = lvl.getGameTime() >= goDeadline;
+            boolean expired = lvl.getGameTime() >= lane.goDeadline;
             if (!there && !expired) {
                 return;                       // still on their way
             }
-            JsonObject act = pendingGo;
-            pendingGo = null;
+            JsonObject act = lane.pendingGo;
+            lane.pendingGo = null;
             act.addProperty("__arrived", true);
             // They have walked to it; now face it and put a hand out, so the
             // thing that happens next visibly comes from them.
@@ -265,14 +304,14 @@ public final class Bridge {
                 }
             }
             // Reached for above; now let the beat pass before it happens.
-            pendingAct = act;
-            actAt = server.overworld().getGameTime() + BEAT;
+            lane.pendingAct = act;
+            lane.actAt = server.overworld().getGameTime() + BEAT;
             return;
         }
-        if (pendingWait != null) {
-            ServerLevel lvl = level(server, pendingWait);
-            boolean met = conditionMet(lvl, pendingWait);
-            boolean expired = lvl.getGameTime() >= waitDeadline;
+        if (lane.pendingWait != null) {
+            ServerLevel lvl = level(server, lane.pendingWait);
+            boolean met = conditionMet(lvl, lane.pendingWait);
+            boolean expired = lvl.getGameTime() >= lane.waitDeadline;
             if (!met && !expired) {
                 return;                       // still waiting, try again next tick
             }
@@ -281,38 +320,35 @@ public final class Bridge {
             res.addProperty("ok", met);
             res.addProperty("timedOut", !met && expired);
             note(res);
-            RESULTS.add(res);
-            pendingWait = null;
-            if (QUEUE.isEmpty() && !inFlight()) {
-                finish(server);
+            lane.results.add(res);
+            lane.pendingWait = null;
+            if (lane.queue.isEmpty() && !lane.inFlight()) {
+                finish(server, lane);
             }
             return;
         }
-        if (QUEUE.isEmpty()) {
-            pickUpInbox();
-            if (QUEUE.isEmpty()) {
-                return;
-            }
+        if (lane.queue.isEmpty()) {
+            return;
         }
         // One action per tick keeps redstone, block updates and entity motion
         // able to actually happen between steps. Draining the whole queue in a
         // single tick would make "throw, wait, look" meaningless.
-        JsonObject act = QUEUE.poll();
+        JsonObject act = lane.queue.poll();
         JsonObject res = new JsonObject();
         res.addProperty("action", act.has("do") ? act.get("do").getAsString() : "?");
-        String[] before = snapshotBody(server);
+        String[] before = snapshotBody(server, lane);
         try {
-            run(server, act, res);
+            run(server, act, res, lane);
         } catch (Exception e) {
             res.addProperty("ok", false);
             res.addProperty("error", String.valueOf(e));
-            explain(e, res, server, before);
+            explain(e, res, server, before, lane);
             Ghost.LOG.error("bridge action failed: {}", act, e);
         }
         note(res);
-        RESULTS.add(res);
-        if (QUEUE.isEmpty() && !inFlight()) {
-            finish(server);
+        lane.results.add(res);
+        if (lane.queue.isEmpty() && !lane.inFlight()) {
+            finish(server, lane);
         }
     }
 
@@ -342,17 +378,34 @@ public final class Bridge {
         return Files.exists(legacy) ? legacy : null;
     }
 
-    private static void pickUpInbox() {
+    /**
+     * Take one request off the inbox and put it in its owner's lane.
+     *
+     * <p>One reader, because two readers on one directory is a race nobody
+     * needs. What changed with lanes is not the reading but the filing.
+     *
+     * <p>A batch is never split: it arrives as one file, runs in one lane in
+     * order, and its results are written under its own id. A lane that is still
+     * working keeps the file waiting rather than having its {@code currentId}
+     * overwritten mid-batch - which would address one caller's results to
+     * another.
+     */
+    private static void pickUpInbox(MinecraftServer server) {
+        if (heldActions != null) {
+            if (place(server, heldOwner, heldId, heldActions)) {
+                heldActions = null;
+                heldId = null;
+                heldOwner = null;
+            }
+            return;                           // one batch in hand is enough
+        }
         Path in = nextRequest();
         if (in == null) {
             return;
         }
-        // The file name is the request id; the legacy single slot has none of
-        // its own, so it gets a serial one rather than sharing a name with the
-        // next caller's batch.
         String name = in.getFileName().toString();
-        currentId = name.equals("inbox.json")
-                ? "legacy-" + (batches + 1)
+        String id = name.equals("inbox.json")
+                ? "legacy-" + System.currentTimeMillis()
                 : name.substring(0, name.length() - 5);
         try {
             // Consume before running: a batch must never be able to replay
@@ -363,36 +416,89 @@ public final class Bridge {
             try (Reader r = Files.newBufferedReader(taken, StandardCharsets.UTF_8)) {
                 JsonElement root = JsonParser.parseReader(r);
                 JsonArray arr;
+                JsonObject obj = null;
                 if (root.isJsonArray()) {
                     arr = root.getAsJsonArray();
                 } else {
-                    JsonObject obj = root.getAsJsonObject();
+                    obj = root.getAsJsonObject();
                     // An id the caller chose itself beats the file name, so a
                     // requester can pick something it will recognise later.
                     if (obj.has("id")) {
-                        currentId = obj.get("id").getAsString();
+                        id = obj.get("id").getAsString();
                     }
                     arr = obj.getAsJsonArray("actions");
                 }
                 if (arr.size() > MAX_ACTIONS) {
                     Ghost.LOG.error("bridge batch of {} exceeds cap {}", arr.size(), MAX_ACTIONS);
-                    writeError("batch of " + arr.size() + " exceeds cap " + MAX_ACTIONS);
+                    writeError("batch of " + arr.size() + " exceeds cap " + MAX_ACTIONS, id);
                     return;
                 }
-                RESULTS.getAsJsonArray();
-                while (RESULTS.size() > 0) {
-                    RESULTS.remove(0);
+                // The file is already consumed. If the lane is busy, hold the
+                // parsed batch in memory rather than moving the file back and
+                // forth every tick - that is filesystem churn for the whole
+                // length of a goto, and a crash mid-move loses the batch.
+                if (!place(server, ownerOf(server, obj, arr), id, arr)) {
+                    heldOwner = ownerOf(server, obj, arr);
+                    heldId = id;
+                    heldActions = arr;
                 }
-                for (JsonElement e : arr) {
-                    QUEUE.add(e.getAsJsonObject());
-                }
-                batches++;
-                Ghost.LOG.info("bridge batch accepted: {} action(s)", QUEUE.size());
             }
         } catch (Exception e) {
             Ghost.LOG.error("could not read inbox", e);
-            writeError(String.valueOf(e));
+            writeError(String.valueOf(e), id);
         }
+    }
+
+    /** A batch that has been read but whose lane was not free yet. */
+    private static java.util.UUID heldOwner;
+    private static String heldId;
+    private static JsonArray heldActions;
+
+    /**
+     * Put a batch in its lane, or say it could not go yet.
+     *
+     * <p>Refuses while the lane still has work: overwriting {@code currentId}
+     * mid-batch would address this caller's results to the one already running,
+     * which is one of the three ways the singleton was wrong for two players.
+     */
+    private static boolean place(MinecraftServer server, java.util.UUID owner,
+                                 String id, JsonArray arr) {
+        Lane lane = lane(owner);
+        if (!lane.queue.isEmpty() || lane.inFlight()) {
+            return false;
+        }
+        lane.currentId = id;
+                while (lane.results.size() > 0) {
+                    lane.results.remove(0);
+                }
+                for (JsonElement e : arr) {
+                    lane.queue.add(e.getAsJsonObject());
+                }
+        lane.batches++;
+        Ghost.LOG.info("bridge batch accepted: {} action(s) for lane {}",
+                lane.queue.size(), lane.owner);
+        return true;
+    }
+
+    /**
+     * Whose batch this is.
+     *
+     * <p>An explicit {@code as} wins - on the batch, or failing that on its
+     * first action, because that is where callers actually put it. Otherwise
+     * the existing {@code requester} rule decides, which is the same rule the
+     * verbs use to pick a body, so the lane and the body cannot disagree about
+     * who is acting.
+     */
+    private static java.util.UUID ownerOf(MinecraftServer server, JsonObject root, JsonArray arr) {
+        JsonObject probe = new JsonObject();
+        if (root != null && root.has("as")) {
+            probe.add("as", root.get("as"));
+        } else if (arr.size() > 0 && arr.get(0).isJsonObject()
+                && arr.get(0).getAsJsonObject().has("as")) {
+            probe.add("as", arr.get(0).getAsJsonObject().get("as"));
+        }
+        ServerPlayer who = requester(server, probe);
+        return who == null ? ghost.body.Roster.UNOWNED : who.getUUID();
     }
 
     /**
@@ -411,12 +517,12 @@ public final class Bridge {
      * answer existed, and nothing said whose it was.
      */
     private static boolean inFlight() {
-        return pendingGo != null || pendingAct != null || pendingWait != null;
+        return LANES.values().stream().anyMatch(Lane::inFlight);
     }
 
     /** Where the body is, as {dimension, "x y z"}, or null if there is none. */
-    private static String[] snapshotBody(MinecraftServer server) {
-        ghost.body.Body b = currentBody(server);
+    private static String[] snapshotBody(MinecraftServer server, Lane lane) {
+        ghost.body.Body b = currentBody(server, lane);
         if (b == null) {
             return null;
         }
@@ -440,12 +546,12 @@ public final class Bridge {
      * changed dimension or was carried somewhere, the load-bearing part happened
      * and the caller needs to know that far more than it needs the trace.
      */
-    private static void explain(Exception e, JsonObject res,
-                                MinecraftServer server, String[] before) {
+    private static void explain(Exception e, JsonObject res, MinecraftServer server,
+                                String[] before, Lane lane) {
         String s = String.valueOf(e);
         boolean noConnection = s.contains("io.netty") || s.contains("Connection.channel");
 
-        String[] after = snapshotBody(server);
+        String[] after = snapshotBody(server, lane);
         if (before != null && after != null) {
             if (!before[0].equals(after[0])) {
                 // Dimension changed. Whatever threw, the move landed.
@@ -638,9 +744,6 @@ public final class Bridge {
      * request gets the permissions of an ordinary player rather than of the
      * console.
      */
-    /** Whose request is in flight, for the pipeline stages that have no JsonObject. */
-    private static java.util.UUID currentOwner = null;
-
     /**
      * The asker's OWN body.
      *
@@ -676,10 +779,10 @@ public final class Bridge {
      * journey started by one player could be judged complete by another
      * player's body standing still.
      */
-    private static ghost.body.Body currentBody(MinecraftServer server) {
-        if (currentOwner != null) {
+    private static ghost.body.Body currentBody(MinecraftServer server, Lane lane) {
+        if (lane != null && !ghost.body.Roster.UNOWNED.equals(lane.owner)) {
             java.util.List<ghost.body.Body> mine =
-                    ghost.body.Bodies.owned(server, currentOwner, true);
+                    ghost.body.Bodies.owned(server, lane.owner, true);
             if (!mine.isEmpty()) {
                 return mine.get(0);
             }
@@ -778,11 +881,10 @@ public final class Bridge {
         return new BlockPos(p.get(0).getAsInt(), p.get(1).getAsInt(), p.get(2).getAsInt());
     }
 
-    private static void run(MinecraftServer server, JsonObject a, JsonObject res) {
-        // Remember whose request this is, so the pipeline stages that outlive
-        // the JsonObject can still ask for the right body.
-        ServerPlayer asker = requester(server, a);
-        currentOwner = asker == null ? null : asker.getUUID();
+    private static void run(MinecraftServer server, JsonObject a, JsonObject res,
+                            Lane lane) {
+        // The lane already knows whose work this is - it was chosen by the
+        // same requester() rule when the batch was routed.
         String what = a.get("do").getAsString();
         ServerLevel level = level(server, a);
         // On EVERY result, not just the ones that happen to mention it. A
@@ -834,8 +936,8 @@ public final class Bridge {
                     reachFor(body, site);      // close enough: reach, do not walk
                 } else {
                     body.postTo(site);
-                    pendingGo = a;
-                    goDeadline = level.getGameTime() + TRAVEL_TIMEOUT;
+                    lane.pendingGo = a;
+                    lane.goDeadline = level.getGameTime() + TRAVEL_TIMEOUT;
                     res.addProperty("ok", true);
                     res.addProperty("travelling", true);
                     res.addProperty("blocksAway", Math.round(away));
@@ -851,9 +953,9 @@ public final class Bridge {
 
         switch (what) {
             case "wait" -> {
-                waitTicks = Math.max(0, a.get("ticks").getAsInt());
+                lane.waitTicks = Math.max(0, a.get("ticks").getAsInt());
                 res.addProperty("ok", true);
-                res.addProperty("ticks", waitTicks);
+                res.addProperty("ticks", lane.waitTicks);
             }
             case "command" -> {
                 // Report what the command DID, not that it was dispatched.
@@ -1304,9 +1406,9 @@ public final class Bridge {
                 // Parked rather than run: the tick loop re-tests it until it is
                 // satisfied or the timeout passes. Always bounded - a condition
                 // that never comes true must not wedge the queue forever.
-                pendingWait = a;
+                lane.pendingWait = a;
                 long limit = a.has("timeout") ? a.get("timeout").getAsLong() : 1200L;
-                waitDeadline = level.getGameTime() + Math.max(1L, limit);
+                lane.waitDeadline = level.getGameTime() + Math.max(1L, limit);
                 res.addProperty("ok", true);
                 res.addProperty("parked", true);
             }
@@ -1833,7 +1935,7 @@ public final class Bridge {
         }
     }
 
-    private static void finish(MinecraftServer server) {
+    private static void finish(MinecraftServer server, Lane lane) {
         // The errand is over: come back. A body that stays where the last
         // action happened would drift across the base one job at a time and
         // never be where you are, which is the opposite of having one.
@@ -1845,32 +1947,33 @@ public final class Bridge {
         // mid-transit and never completed. They now releases the post themselves the
         // moment they arrive, and gives up on their own after 90 seconds if they
         // cannot, so nothing is left holding a stale posting either way.
-        ghost.body.Body body = currentBody(server);
+        ghost.body.Body body = currentBody(server, lane);
         if (body != null && !body.stationed() && !body.travelling()) {
             body.clearPost();
         }
 
         JsonObject out = new JsonObject();
         out.addProperty("finishedAt", java.time.OffsetDateTime.now().toString());
-        out.addProperty("batch", batches);
-        if (currentId != null) {
-            out.addProperty("id", currentId);
+        out.addProperty("batch", lane.batches);
+        if (lane.currentId != null) {
+            out.addProperty("id", lane.currentId);
         }
-        out.add("results", RESULTS.deepCopy());
-        write(out);
-        while (RESULTS.size() > 0) {
-            RESULTS.remove(0);
+        out.add("results", lane.results.deepCopy());
+        write(out, lane.currentId);
+        while (lane.results.size() > 0) {
+            lane.results.remove(0);
         }
+        lane.currentId = null;
     }
 
-    private static void writeError(String msg) {
+    private static void writeError(String msg, String id) {
         JsonObject out = new JsonObject();
         out.addProperty("error", msg);
         out.addProperty("finishedAt", java.time.OffsetDateTime.now().toString());
-        if (currentId != null) {
-            out.addProperty("id", currentId);
+        if (id != null) {
+            out.addProperty("id", id);
         }
-        write(out);
+        write(out, id);
     }
 
     /**
@@ -1882,23 +1985,23 @@ public final class Bridge {
      * anyone. {@code outbox.jsonl} is the append-only history, so an answer
      * that arrived while nobody was looking is still there afterwards.
      */
-    private static void write(JsonObject out) {
+    private static void write(JsonObject out, String id) {
         try (Writer w = Files.newBufferedWriter(outbox(), StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
             GSON.toJson(out, w);
         } catch (IOException e) {
             Ghost.LOG.error("could not write outbox", e);
         }
-        if (currentId != null) {
+        if (id != null) {
             try {
                 Files.createDirectories(outDir());
-                Path mine = outDir().resolve(currentId + ".json");
+                Path mine = outDir().resolve(id + ".json");
                 try (Writer w = Files.newBufferedWriter(mine, StandardCharsets.UTF_8,
                         StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
                     GSON.toJson(out, w);
                 }
             } catch (Exception e) {
-                Ghost.LOG.error("could not write addressed result for {}", currentId, e);
+                Ghost.LOG.error("could not write addressed result for {}", id, e);
             }
         }
         try {
@@ -1911,7 +2014,5 @@ public final class Bridge {
         } catch (IOException e) {
             Ghost.LOG.error("could not append outbox log", e);
         }
-        currentId = null;
-        currentOwner = null;
     }
 }
