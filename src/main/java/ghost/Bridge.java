@@ -237,6 +237,7 @@ public final class Bridge {
                 explain(e, res, server, before);
                 Ghost.LOG.error("bridge action failed after the beat: {}", act, e);
             }
+            note(res);
             RESULTS.add(res);
             if (QUEUE.isEmpty() && !inFlight()) {
                 finish(server);
@@ -279,6 +280,7 @@ public final class Bridge {
             res.addProperty("action", "waitFor");
             res.addProperty("ok", met);
             res.addProperty("timedOut", !met && expired);
+            note(res);
             RESULTS.add(res);
             pendingWait = null;
             if (QUEUE.isEmpty() && !inFlight()) {
@@ -307,6 +309,7 @@ public final class Bridge {
             explain(e, res, server, before);
             Ghost.LOG.error("bridge action failed: {}", act, e);
         }
+        note(res);
         RESULTS.add(res);
         if (QUEUE.isEmpty() && !inFlight()) {
             finish(server);
@@ -1773,6 +1776,61 @@ public final class Bridge {
 
     private static String blockId(BlockState st) {
         return BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString();
+    }
+
+    /**
+     * Verbs that move, destroy or spend something.
+     *
+     * <p>Reads are deliberately excluded. A log that records every {@code scan}
+     * is a log nobody greps, and the question this exists to answer is always
+     * about property: where did the armour go, what ate the quartz, which
+     * command emptied that chest.
+     */
+    private static final java.util.Set<String> CONSEQUENTIAL = java.util.Set.of(
+            "break", "place", "fill", "clear", "undo", "take", "put",
+            "withdraw", "deposit", "craft", "use", "command");
+
+    /**
+     * One line per consequential action, server-side.
+     *
+     * <p>Ghost said plenty and logged none of it: {@code sendSuccess(..., false)}
+     * reaches only the command source, so a full session produced <b>zero</b>
+     * "Shelby" lines in {@code latest.log}. When a suit of armour went missing
+     * the only way to establish what the command had done was to ask the person
+     * who had watched it happen, and reconstructing behaviour from memory is how
+     * an afternoon disappears.
+     *
+     * <p>Logged from the result rather than from the intent, so what lands in
+     * the file is what the verb actually reported - the same rule the verbs
+     * themselves are held to.
+     */
+    private static void note(JsonObject res) {
+        try {
+            if (res == null || !res.has("action")) {
+                return;
+            }
+            String verb = res.get("action").getAsString();
+            if (!CONSEQUENTIAL.contains(verb)) {
+                return;
+            }
+            StringBuilder sb = new StringBuilder();
+            for (String k : new String[]{"ok", "dimension", "at", "from", "to", "block",
+                    "item", "count", "moved", "taken", "placed", "broken", "restored",
+                    "collapsed", "unchanged", "alreadyAir", "cleared", "filled",
+                    "status", "error", "detail"}) {
+                if (res.has(k) && !res.get(k).isJsonNull()) {
+                    if (sb.length() > 0) {
+                        sb.append(' ');
+                    }
+                    String v = res.get(k).toString();
+                    sb.append(k).append('=').append(v.length() > 160 ? v.substring(0, 160) + "..." : v);
+                }
+            }
+            Ghost.LOG.info("did {}: {}", verb, sb);
+        } catch (Throwable t) {
+            // Logging must never be the thing that breaks a verb.
+            Ghost.LOG.warn("could not log action result", t);
+        }
     }
 
     private static void finish(MinecraftServer server) {

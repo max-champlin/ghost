@@ -136,7 +136,17 @@ everything else.
 
 ## 5. Nothing Shelby says reaches the log
 
-**Severity: medium — it is what makes every other bug expensive.**
+**FIXED 2026-09-11.** `Bridge.note(res)` logs one line per *consequential*
+action — `break place fill clear undo take put withdraw deposit craft use
+command` — at the three points a result is recorded. Reads are excluded on
+purpose: a log that records every `scan` is a log nobody greps, and the question
+this answers is always about property.
+
+Logged **from the result, not the intent**, so the file records what the verb
+reported rather than what it was asked to do — the same rule the verbs are held
+to. Wrapped so logging can never be the thing that breaks a verb.
+
+**Original severity: medium — it is what made every other bug expensive.**
 
 40 user-facing message calls (`sendSuccess`, `displayClientMessage`) against 54
 `LOG.` calls, and **a full session produced zero "Shelby" lines in
