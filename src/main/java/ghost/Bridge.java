@@ -245,7 +245,7 @@ public final class Bridge {
         }
         if (pendingGo != null) {
             ServerLevel lvl = level(server, pendingGo);
-            ghost.body.Body body = ghost.body.Bodies.find(server);
+            ghost.body.Body body = currentBody(server);
             boolean there = body == null || body.arrived(ARRIVED_WITHIN);
             boolean expired = lvl.getGameTime() >= goDeadline;
             if (!there && !expired) {
@@ -413,7 +413,7 @@ public final class Bridge {
 
     /** Where the body is, as {dimension, "x y z"}, or null if there is none. */
     private static String[] snapshotBody(MinecraftServer server) {
-        ghost.body.Body b = ghost.body.Bodies.find(server);
+        ghost.body.Body b = currentBody(server);
         if (b == null) {
             return null;
         }
@@ -610,6 +610,55 @@ public final class Bridge {
      * request gets the permissions of an ordinary player rather than of the
      * console.
      */
+    /** Whose request is in flight, for the pipeline stages that have no JsonObject. */
+    private static java.util.UUID currentOwner = null;
+
+    /**
+     * The asker's OWN body.
+     *
+     * <p>{@link ghost.body.Bodies#find} answers with the first live body in
+     * level-iteration order, which is Overworld first and has nothing to do with
+     * who asked. That was every verb's idea of "the body": on a server it means
+     * one player's verb moving another player's Shelby, and in single-player
+     * with two bodies it means {@code where} reporting one while the verbs act
+     * on the other. Both observed, 2026-09-10.
+     *
+     * <p>Falls back to {@code find} when there is no requester, and when the
+     * requester owns nothing - a console-driven bridge with one ownerless body
+     * has to keep working.
+     */
+    private static ghost.body.Body body(MinecraftServer server, JsonObject a) {
+        ServerPlayer who = requester(server, a);
+        if (who != null) {
+            java.util.List<ghost.body.Body> mine =
+                    ghost.body.Bodies.owned(server, who.getUUID(), true);
+            if (!mine.isEmpty()) {
+                return mine.get(0);
+            }
+        }
+        return ghost.body.Bodies.find(server);
+    }
+
+    /**
+     * The body belonging to the request currently in flight.
+     *
+     * <p>The pipeline stages - the travel check, the snapshot, the release on
+     * finish - run a tick or more after the request was parsed and have no
+     * access to it. Without this they fall back to "first body anywhere", so a
+     * journey started by one player could be judged complete by another
+     * player's body standing still.
+     */
+    private static ghost.body.Body currentBody(MinecraftServer server) {
+        if (currentOwner != null) {
+            java.util.List<ghost.body.Body> mine =
+                    ghost.body.Bodies.owned(server, currentOwner, true);
+            if (!mine.isEmpty()) {
+                return mine.get(0);
+            }
+        }
+        return ghost.body.Bodies.find(server);
+    }
+
     private static ServerPlayer requester(MinecraftServer server, JsonObject a) {
         if (a.has("as")) {
             ServerPlayer named = server.getPlayerList()
@@ -618,6 +667,12 @@ public final class Bridge {
                 return named;
             }
         }
+        // The ONE find() that must stay ownership-blind: this is how the owner
+        // is derived in the first place, when the request did not name one.
+        // Asking body(server, a) here is not merely circular, it is infinite -
+        // body() calls requester() to decide whose body to look for. A blanket
+        // rewrite of the call sites did exactly that and the comment above it
+        // was already there, saying not to.
         ghost.body.Body body = ghost.body.Bodies.find(server);
         if (body != null && body.followed() instanceof ServerPlayer bound) {
             return bound;
@@ -625,11 +680,13 @@ public final class Bridge {
         return server.getPlayerList().getPlayers().stream().findFirst().orElse(null);
     }
 
-    private static BlockPos anchor(MinecraftServer server, ServerLevel level) {
-        // Bodies.find, like everywhere else. This used to search one level with
-        // a 60-million-block box and no isAlive filter, so it could answer with
-        // a different entity than the verb standing next to it was moving.
-        ghost.body.Body body = ghost.body.Bodies.find(server);
+    private static BlockPos anchor(MinecraftServer server, ServerLevel level, JsonObject a) {
+        // The ASKER'S body, not the first one found. This used to search one
+        // level with a 60-million-block box and no isAlive filter, so it could
+        // answer with a different entity than the verb standing next to it was
+        // moving; it then searched every level and still answered with whichever
+        // came first, which is the same bug wearing a bigger box.
+        ghost.body.Body body = body(server, a);
         if (body != null) {
             return body.blockPosition();
         }
@@ -694,6 +751,10 @@ public final class Bridge {
     }
 
     private static void run(MinecraftServer server, JsonObject a, JsonObject res) {
+        // Remember whose request this is, so the pipeline stages that outlive
+        // the JsonObject can still ask for the right body.
+        ServerPlayer asker = requester(server, a);
+        currentOwner = asker == null ? null : asker.getUUID();
         String what = a.get("do").getAsString();
         ServerLevel level = level(server, a);
         // On EVERY result, not just the ones that happen to mention it. A
@@ -726,7 +787,7 @@ public final class Bridge {
         // not expect a network call to relocate them. A default that surprises
         // someone who knows about it is too blunt.
         if (wantGo && !a.has("go")) {
-            ghost.body.Body stationedBody = ghost.body.Bodies.find(server);
+            ghost.body.Body stationedBody = body(server, a);
             if (stationedBody != null && stationedBody.stationed()) {
                 wantGo = false;
                 res.addProperty("stayedPut", true);
@@ -736,7 +797,7 @@ public final class Bridge {
             }
         }
         if (wantGo && a.has("at") && !a.has("__arrived")) {
-            ghost.body.Body body = ghost.body.Bodies.find(server);
+            ghost.body.Body body = body(server, a);
             if (body != null) {
                 BlockPos site = pos(a, "at");
                 double away = Math.sqrt(body.distanceToSqr(
@@ -997,7 +1058,7 @@ public final class Bridge {
                 // false success is worse than an error, so: post their first, then
                 // move them.
                 BlockPos p = pos(a, "at");
-                ghost.body.Body body = ghost.body.Bodies.find(server);
+                ghost.body.Body body = body(server, a);
                 if (body == null) {
                     res.addProperty("ok", false);
                     res.addProperty("error", "no body - /ghost body first");
@@ -1087,8 +1148,8 @@ public final class Bridge {
                 if (a.has("at")) {
                     point = pos(a, "at");
                 } else {
-                    ghost.body.Body body = ghost.body.Bodies.find(server);
-                    point = body != null ? body.blockPosition() : anchor(server, level);
+                    ghost.body.Body body = body(server, a);
+                    point = body != null ? body.blockPosition() : anchor(server, level, a);
                 }
                 place.pos = new int[]{point.getX(), point.getY(), point.getZ()};
                 place.dim = level.dimension().location().toString();
@@ -1236,7 +1297,7 @@ public final class Bridge {
             case "golems" -> {
                 // Entities can already see them; this answers the question that
                 // actually gets asked, which is "why is the workforce slow".
-                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
+                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level, a);
                 int r = a.has("radius") ? a.get("radius").getAsInt() : 48;
                 boolean detail = a.has("detail") && a.get("detail").getAsBoolean();
                 res.add("result", JsonParser.parseString(new Gson().toJson(
@@ -1244,7 +1305,7 @@ public final class Bridge {
                 res.addProperty("ok", true);
             }
             case "entities" -> {
-                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
+                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level, a);
                 int r = a.has("radius") ? a.get("radius").getAsInt() : 24;
                 boolean detail = a.has("detail") && a.get("detail").getAsBoolean();
                 res.add("entities", JsonParser.parseString(
@@ -1256,8 +1317,8 @@ public final class Bridge {
                 // Station them somewhere until told otherwise. Unlike "go", this
                 // survives the end of the batch - for when the work is where they
                 // should be, not a errand to run and come back from.
-                ghost.body.Body body = ghost.body.Bodies.find(server);
-                BlockPos site = a.has("at") ? pos(a, "at") : anchor(server, level);
+                ghost.body.Body body = body(server, a);
+                BlockPos site = a.has("at") ? pos(a, "at") : anchor(server, level, a);
                 if (body == null) {
                     res.addProperty("ok", false);
                     res.addProperty("error", "no body to station");
@@ -1268,7 +1329,7 @@ public final class Bridge {
                 }
             }
             case "return" -> {
-                ghost.body.Body body = ghost.body.Bodies.find(server);
+                ghost.body.Body body = body(server, a);
                 if (body != null) {
                     body.clearPost();
                 }
@@ -1284,7 +1345,7 @@ public final class Bridge {
                 // there, and did it confidently. A verification that quietly
                 // looks somewhere else is worse than none, because it gets
                 // believed.
-                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
+                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level, a);
                 int r = a.has("radius") ? a.get("radius").getAsInt() : 16;
                 // An unrecognised id used to resolve to AIR and get counted,
                 // so "essence" answered 0 next to a farm feeding that network.
@@ -1314,7 +1375,7 @@ public final class Bridge {
                 // junk cell fills the whole budget before reaching cell two.
                 // AE2 hands back each cell as a real inventory, so they are read
                 // one at a time instead.
-                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
+                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level, a);
                 int r = a.has("radius") ? a.get("radius").getAsInt() : 8;
                 Item want = null;
                 if (a.has("item")) {
@@ -1347,7 +1408,7 @@ public final class Bridge {
                     res.addProperty("rank", Perms.rank(who));
                     res.addProperty("detail", Perms.refusal(Perms.Ability.CRAFT));
                 } else {
-                    BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
+                    BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level, a);
                     int r = a.has("radius") ? a.get("radius").getAsInt() : 16;
                     long amount = a.has("count") ? a.get("count").getAsLong() : 1L;
                     ItemLookup.Result found = ItemLookup.resolve(a.get("item").getAsString());
@@ -1409,7 +1470,7 @@ public final class Bridge {
                 }
             }
             case "find" -> {
-                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level);
+                BlockPos at = a.has("at") ? pos(a, "at") : anchor(server, level, a);
                 int r = a.has("radius") ? a.get("radius").getAsInt() : 32;
                 res.add("found", JsonParser.parseString(new Gson().toJson(
                         Finder.findBlocks(level, at, a.get("block").getAsString(), r))));
@@ -1480,7 +1541,7 @@ public final class Bridge {
                     res.addProperty("detail", Perms.refusal(Perms.Ability.CRAFT));
                     break;
                 }
-                ghost.body.Body body = ghost.body.Bodies.find(server);
+                ghost.body.Body body = body(server, a);
                 if (body == null) {
                     res.addProperty("ok", false);
                     res.addProperty("error", "no body - there is nothing to carry it in");
@@ -1543,7 +1604,7 @@ public final class Bridge {
                 // Real body states, not flags on a request. They physically
                 // crouches or jumps, and the world gets to react to it the way
                 // it would for anyone else standing there.
-                ghost.body.Body body = ghost.body.Bodies.find(server);
+                ghost.body.Body body = body(server, a);
                 if (body == null) {
                     res.addProperty("ok", false);
                     res.addProperty("error", "no body to move");
@@ -1610,7 +1671,7 @@ public final class Bridge {
                 res.addProperty("ok", true);
             }
             case "worn" -> {
-                ghost.body.Body body = ghost.body.Bodies.find(server);
+                ghost.body.Body body = body(server, a);
                 if (body == null) {
                     res.addProperty("ok", false);
                     res.addProperty("error", "I have no body here to be wearing anything");
@@ -1621,7 +1682,7 @@ public final class Bridge {
                 }
             }
             case "bag" -> {
-                ghost.body.Body body = ghost.body.Bodies.find(server);
+                ghost.body.Body body = body(server, a);
                 if (body == null) {
                     res.addProperty("ok", false);
                     res.addProperty("error", "I have no body here to carry anything");
@@ -1640,7 +1701,7 @@ public final class Bridge {
                     res.addProperty("detail", Perms.refusal(Perms.Ability.WORLD));
                     break;
                 }
-                ghost.body.Body body = ghost.body.Bodies.find(server);
+                ghost.body.Body body = body(server, a);
                 if (body == null) {
                     res.addProperty("ok", false);
                     res.addProperty("error", "I have no body here to carry anything");
@@ -1701,7 +1762,7 @@ public final class Bridge {
         // mid-transit and never completed. They now releases the post themselves the
         // moment they arrive, and gives up on their own after 90 seconds if they
         // cannot, so nothing is left holding a stale posting either way.
-        ghost.body.Body body = ghost.body.Bodies.find(server);
+        ghost.body.Body body = currentBody(server);
         if (body != null && !body.stationed() && !body.travelling()) {
             body.clearPost();
         }
@@ -1768,5 +1829,6 @@ public final class Bridge {
             Ghost.LOG.error("could not append outbox log", e);
         }
         currentId = null;
+        currentOwner = null;
     }
 }

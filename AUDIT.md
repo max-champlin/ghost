@@ -14,7 +14,21 @@ Scale, for context: 34 Java files, 9,413 lines. `Bridge.java` is 1,772 of them,
 
 ## 1. Ownership is enforced in one place and ignored in seventeen
 
-**Severity: high — this is the one that bites users.**
+**FIXED 2026-09-11.** 13 call sites now go through `Bridge.body(server, a)`
+(the asker's own body, falling back to `find` only when there is no requester or
+they own nothing) and 3 pipeline stages through `currentBody(server)`, which
+reads a new `currentOwner` set when a request starts and cleared with
+`currentId`. Three raw `find()` calls remain and are meant to: the bootstrap in
+`requester()` plus the two fallbacks.
+
+*Worth recording how close this came to being worse:* a blanket rewrite of the
+call sites also replaced the one inside `requester()`, which `body()` calls to
+decide whose body to look for — infinite recursion, directly beneath a comment
+saying that line must stay ownership-blind. Caught by counting the remaining
+`find()` calls against what was expected (2 found, 3 expected) rather than by
+reading the diff.
+
+**Original severity: high — this is the one that bit users.**
 
 `/ghost body here` knows which body belongs to which player. Almost nothing else
 does. **17 call sites** of `Bodies.find(server)` across `Bridge.java` and
@@ -51,11 +65,22 @@ to each other.
 This is a design change, not a patch, and should be done *after* item 1 — there
 is no point routing requests per player while the verbs still guess.
 
+**Partial, 2026-09-11:** `currentOwner` now tracks whose request is in flight,
+which is the first thing per-player state needs. It is still *one* owner at a
+time — this makes the singleton honest, not plural.
+
 ---
 
 ## 3. `Bodies.all` promises every dimension and delivers loaded chunks
 
-**Severity: high — three separate bugs traced back to this in one day.**
+**DOCUMENTED 2026-09-11** — the javadoc now states the qualifier, says an empty
+result means "none loaded" and never "none exist", lists the three bugs that
+came from reading it the other way, and points at `Roster` for the "does one
+exist?" question. `find()` additionally warns that it is ownership-blind and
+order-dependent. The *behaviour* is unchanged and cannot be changed; the lie was
+in the description.
+
+**Original severity: high — three separate bugs traced back to this in one day.**
 
 Its own javadoc says *"Every live body, in every dimension."* It walks
 `server.getAllLevels()` and calls `level.getEntities(...)`, which only sees

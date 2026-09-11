@@ -44,15 +44,27 @@ public final class Bodies {
     }
 
     /**
-     * The body, wherever it is.
+     * Every live body in a <b>loaded chunk</b>, in any dimension.
      *
-     * <p>Searches every dimension, not just the one the asker is standing in.
-     * Callers used to look only in the player's own level, which reported "no
-     * body" the moment they were a portal away - and then said so in chat, which
-     * is worse than saying nothing.
-     */
-    /**
-     * Every live body, in every dimension.
+     * <h2>Read that qualifier carefully</h2>
+     *
+     * <p>This walks {@code server.getAllLevels()}, so it is not limited to the
+     * asker's own dimension - callers used to look only there, and reported "no
+     * body" the moment they were a portal away. But {@code level.getEntities}
+     * sees <b>loaded chunks only</b>, and measured 2026-09-10 by polling
+     * {@code where} across a dimension change, a body stops being visible
+     * <b>within 2.6 seconds</b> of the player leaving it behind.
+     *
+     * <p>So an empty result means <i>"none loaded right now"</i> and never
+     * <i>"none exist"</i>. Three separate bugs came from reading it the second
+     * way in a single day: {@code where} announcing "no live body in any
+     * dimension" about one we had been looking at a minute earlier,
+     * {@code body here} deciding the player had none and standing up a
+     * duplicate, and a claim that one-per-player was enforced by construction
+     * when it was enforced only among the loaded.
+     *
+     * <p>{@link Roster} is the answer when the question is "does one exist?".
+     * This is only ever the answer to "which can I touch right now?".
      *
      * <p>There should be exactly one. There can be more: {@code /ghost body
      * here} only clears bodies in the level it was run in, so one left behind in
@@ -79,6 +91,15 @@ public final class Bodies {
         return out;
     }
 
+    /**
+     * The first live body in a loaded chunk, in level-iteration order.
+     *
+     * <p><b>Ownership-blind and order-dependent.</b> Overworld comes first, so
+     * with a body in each of two dimensions this answers with the Overworld one
+     * regardless of who asked or where they are standing. Prefer
+     * {@link #owned} - {@code Bridge.body(server, a)} wraps it - and keep this
+     * for the bootstrap case where the owner is not yet known.
+     */
     public static Body find(net.minecraft.server.MinecraftServer server) {
         if (server == null) {
             return null;
