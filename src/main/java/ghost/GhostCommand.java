@@ -138,6 +138,7 @@ public final class GhostCommand {
         root.then(Commands.literal("body")
                 .executes(ctx -> body(ctx.getSource(), "here"))
                 .then(Commands.literal("here").executes(ctx -> body(ctx.getSource(), "here")))
+                .then(Commands.literal("forget").executes(ctx -> forget(ctx.getSource())))
                 .then(Commands.literal("away").executes(ctx -> body(ctx.getSource(), "away"))));
 
         root.then(Commands.literal("status").executes(ctx -> {
@@ -385,6 +386,41 @@ public final class GhostCommand {
      * one, which also makes it the way to recall a body that has got itself
      * stuck somewhere.
      */
+    /**
+     * Drop the remembered body without touching any entity.
+     *
+     * <p>The escape hatch for a record that has outlived its body - killed by
+     * something else, lost to a world edit, left in a dimension that no longer
+     * exists. Without this, "body here" would refuse forever and there would be
+     * no way back.
+     *
+     * <p>Deliberately separate from "away", which removes a body that is really
+     * there. This one admits we cannot see it and gives up on it, and says so
+     * plainly rather than pretending something was cleaned up.
+     */
+    private static int forget(CommandSourceStack src) {
+        net.minecraft.server.level.ServerPlayer p = src.getPlayer();
+        if (p == null) {
+            src.sendFailure(Component.literal("Shelby: only a player has a body to forget."));
+            return 0;
+        }
+        ghost.body.Roster roster = ghost.body.Roster.of(src.getServer());
+        ghost.body.Roster.Entry e = roster.get(p.getUUID());
+        if (e == null) {
+            src.sendSuccess(() -> Component.literal(
+                    "Shelby: there is no remembered body to forget."), false);
+            return 0;
+        }
+        final String where = e.dimension().location() + " " + e.pos().getX() + " "
+                + e.pos().getY() + " " + e.pos().getZ();
+        roster.clear(p.getUUID());
+        src.sendSuccess(() -> Component.literal(
+                "Shelby: forgotten the body at " + where
+                + ". If it is still standing there it is now an orphan - "
+                + "go and /ghost body away it."), true);
+        return 1;
+    }
+
     private static int body(CommandSourceStack src, String mode) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         net.minecraft.server.level.ServerLevel level = src.getLevel();
         // EVERY dimension, not just this one.
@@ -461,9 +497,29 @@ public final class GhostCommand {
             if (remembered != null) {
                 chosen = remembered;
             } else if (roster.get(ownerId) != null) {
-                // The record outlived the body. Drop it rather than letting a
-                // stale row block every future "body here".
-                roster.clear(ownerId);
+                // REFUSE. Do not clear the record and build a new body.
+                //
+                // That is what this did first, and it cloned anyway: resolve()
+                // pulls the block chunk in with getChunk, but since 1.17
+                // entities live in separate storage and are registered by the
+                // entity section manager on a deferred schedule - so
+                // getEntity(uuid) comes back null in the same tick for exactly
+                // the unloaded body this was written to find. Treating that
+                // null as "the record is stale" threw the record away and stood
+                // up a duplicate, which is the bug it was supposed to prevent,
+                // now with the evidence deleted too.
+                //
+                // A command that cannot verify what it is about to do should
+                // say so rather than guess. The record is kept.
+                ghost.body.Roster.Entry e = roster.get(ownerId);
+                final String dim = e.dimension().location().toString();
+                final net.minecraft.core.BlockPos at = e.pos();
+                src.sendFailure(Component.literal(
+                        "Shelby: you already have a body in " + dim + " at "
+                        + at.getX() + " " + at.getY() + " " + at.getZ()
+                        + ". Go there and use /ghost body here to move them, or "
+                        + "/ghost body forget if they are gone for good."));
+                return 0;
             }
         }
         // "away" deliberately has no such fallback. Dismissing a body standing
