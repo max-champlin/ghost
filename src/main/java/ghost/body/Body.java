@@ -478,30 +478,70 @@ public class Body extends PathfinderMob {
      * {@code body away}, which carried it nowhere. Armour and a full satchel
      * simply ceased to exist.
      */
-    public int spill() {
-        if (level().isClientSide) {
-            return 0;
+    /** What became of the things they were carrying. */
+    public record Spilled(int given, int dropped) {
+        public int total() {
+            return given + dropped;
         }
-        int dropped = 0;
+    }
+
+    /**
+     * Take everything off them and put it somewhere safe.
+     *
+     * <p>{@code discard()} is a silent removal - {@code setGuaranteedDrop} never
+     * fires and nothing lands - so {@code body away} used to delete a suit of
+     * armour and a full satchel without a word.
+     *
+     * <p>Handed to the player rather than thrown on the floor, because the floor
+     * is not safe. Dropping worked, and a Spider-Man set was still lost to it:
+     * the items landed at Y=3 in the Twilight Forest on a five-minute despawn
+     * timer while the player was reading chat. A command whose entire job is to
+     * not lose someone's gear should not hand it to a timer. The floor stays as
+     * the overflow when there is no room, and the message says which happened.
+     *
+     * <p>Logged by name, because Shelby's chat never reaches {@code latest.log}
+     * - so "did the armour drop?" was previously answerable only by asking the
+     * person who saw it.
+     */
+    public Spilled spill(net.minecraft.server.level.ServerPlayer to) {
+        if (level().isClientSide) {
+            return new Spilled(0, 0);
+        }
+        java.util.List<ItemStack> carried = new java.util.ArrayList<>();
         for (net.minecraft.world.entity.EquipmentSlot slot
                 : net.minecraft.world.entity.EquipmentSlot.values()) {
             ItemStack st = getItemBySlot(slot);
             if (!st.isEmpty()) {
-                spawnAtLocation(st.copy());
+                carried.add(st.copy());
                 setItemSlot(slot, ItemStack.EMPTY);
-                dropped++;
             }
         }
         for (int i = 0; i < bag.getContainerSize(); i++) {
             ItemStack st = bag.getItem(i);
             if (!st.isEmpty()) {
-                spawnAtLocation(st.copy());
+                carried.add(st.copy());
                 bag.setItem(i, ItemStack.EMPTY);
-                dropped++;
             }
         }
-        return dropped;
+        int given = 0;
+        int dropped = 0;
+        for (ItemStack st : carried) {
+            String what = st.getCount() + "x " + st.getHoverName().getString();
+            if (to != null) {
+                to.getInventory().add(st);   // mutates: leaves any remainder
+            }
+            if (st.isEmpty()) {
+                given++;
+                ghost.Ghost.LOG.info("Shelby spill: {} -> {}", what, to.getName().getString());
+            } else {
+                spawnAtLocation(st);
+                dropped++;
+                ghost.Ghost.LOG.info("Shelby spill: {} -> floor at {}", what, blockPosition());
+            }
+        }
+        return new Spilled(given, dropped);
     }
+
 
     // --- who we are following --------------------------------------------
 

@@ -470,14 +470,15 @@ public final class GhostCommand {
         // in a dimension you are not in is not something a command called
         // "away" should ever do quietly.
         net.minecraft.nbt.CompoundTag kit = null;
-        int spilled = 0;
+        ghost.body.Body.Spilled spilled = new ghost.body.Body.Spilled(0, 0);
         if (chosen != null) {
             if ("away".equals(mode)) {
-                // Put down what they were carrying FIRST. discard() drops
-                // nothing, so "away" used to delete a suit of armour and a full
-                // satchel without a word - the same silent loss "here" was
-                // fixed for this afternoon, on the path nobody had tested.
-                spilled = chosen.spill();
+                // Empty them out FIRST, into the player's own inventory.
+                // discard() drops nothing, so "away" used to delete armour and
+                // a full satchel silently; dropping fixed that and then lost a
+                // Spider-Man set anyway, to a five-minute despawn timer at Y=3.
+                // Handing it over has no timer and no lava.
+                spilled = chosen.spill(owner);
             } else {
                 kit = new net.minecraft.nbt.CompoundTag();
                 chosen.saveWithoutId(kit);
@@ -485,7 +486,7 @@ public final class GhostCommand {
             chosen.discard();
             removed++;
         }
-        final int dropped = spilled;
+        final ghost.body.Body.Spilled took = spilled;
         final java.util.List<ghost.body.Body> strayList = new java.util.ArrayList<>();
         for (ghost.body.Body b : mine) {
             if (b != chosen && b.isAlive()) {
@@ -496,9 +497,7 @@ public final class GhostCommand {
         if ("away".equals(mode)) {
             final int n = removed;
             src.sendSuccess(() -> Component.literal(n > 0
-                    ? "Shelby: body away (" + n + ")"
-                      + (dropped > 0 ? " - dropped " + dropped + " item"
-                                       + (dropped == 1 ? "" : "s") + " on the floor" : "")
+                    ? "Shelby: body away (" + n + ")" + handed(took)
                       + tail(strayList, level, others)
                     : "Shelby: no body of yours in this dimension to send away."
                       + tail(strayList, level, others)), false);
@@ -549,6 +548,28 @@ public final class GhostCommand {
      * one of them, "where" reports a confident position for a body you cannot
      * see, and nothing ever said there was more than one.
      */
+    /** Says where the gear went, so nobody has to go looking for it. */
+    private static String handed(ghost.body.Body.Spilled s) {
+        if (s.total() == 0) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(" - ");
+        if (s.given() > 0) {
+            sb.append("gave you ").append(s.given())
+              .append(s.given() == 1 ? " item" : " items");
+        }
+        if (s.dropped() > 0) {
+            if (s.given() > 0) {
+                sb.append(", no room for ");
+            } else {
+                sb.append("dropped ");
+            }
+            sb.append(s.dropped()).append(s.dropped() == 1 ? " item" : " items")
+              .append(" so it is on the floor");
+        }
+        return sb.toString();
+    }
+
     private static String tail(java.util.List<ghost.body.Body> strayList,
                                net.minecraft.world.level.Level here, int others) {
         StringBuilder sb = new StringBuilder();
