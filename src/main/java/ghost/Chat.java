@@ -207,8 +207,18 @@ public final class Chat {
      * <p>Also binds them to whoever just spoke, so they keep up with the person
      * having the conversation rather than the nearest body heat.
      */
+    /** The speaker's own body, or any ownerless one, or nothing. */
+    private static ghost.body.Body mine(ServerPlayer player) {
+        java.util.List<ghost.body.Body> owned =
+                ghost.body.Bodies.owned(player.getServer(), player.getUUID(), true);
+        return owned.isEmpty() ? null : owned.get(0);
+    }
+
     private static String approach(ServerPlayer player) {
-        ghost.body.Body body = ghost.body.Bodies.find(player.getServer());
+        // The speaker's OWN body. This is the one call site that always had the
+        // player in hand and still asked for "the first body anywhere", so
+        // talking to Shelby could bind and summon somebody else's.
+        ghost.body.Body body = mine(player);
         if (body == null) {
             return "I have no body at present - looking from here";
         }

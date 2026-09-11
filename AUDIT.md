@@ -14,7 +14,7 @@ Scale, for context: 34 Java files, 9,413 lines. `Bridge.java` is 1,772 of them,
 
 ## 1. Ownership is enforced in one place and ignored in seventeen
 
-**FIXED 2026-09-11.** 13 call sites now go through `Bridge.body(server, a)`
+**FIXED 2026-09-11.** All 17 are gone. 13 call sites now go through `Bridge.body(server, a)`
 (the asker's own body, falling back to `find` only when there is no requester or
 they own nothing) and 3 pipeline stages through `currentBody(server)`, which
 reads a new `currentOwner` set when a request starts and cleared with
@@ -27,6 +27,12 @@ decide whose body to look for — infinite recursion, directly beneath a comment
 saying that line must stay ownership-blind. Caught by counting the remaining
 `find()` calls against what was expected (2 found, 3 expected) rather than by
 reading the diff.
+
+*And a second miss caught the same way:* the rewrite only touched
+`Bridge.java`, leaving `Chat.approach` — the one call site that always had the
+`ServerPlayer` in hand — still asking for the first body anywhere, so talking to
+Shelby could bind and summon somebody else's. Found because the audit said 17
+and the script reported 16. **Reconcile the counts, not the impression.**
 
 **Original severity: high — this is the one that bit users.**
 
