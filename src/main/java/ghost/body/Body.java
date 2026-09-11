@@ -439,14 +439,18 @@ public class Body extends PathfinderMob {
      * returns without dirtying the file when nothing moved.
      */
     private void noteWhereIAm() {
-        if (level().isClientSide || getServer() == null || followedId() == null) {
+        if (level().isClientSide || getServer() == null) {
             return;
         }
         if (++rosterTick % 200 != 0) {
             return;
         }
-        Roster.of(getServer()).put(followedId(), level().dimension(),
-                blockPosition(), getUUID());
+        // An unowned body is still a body. It used to be skipped entirely,
+        // which meant the one kind of body most likely to be forgotten about -
+        // one standing somewhere since before ownership existed - was the one
+        // the roster could not warn you about.
+        java.util.UUID key = followedId() == null ? Roster.UNOWNED : followedId();
+        Roster.of(getServer()).put(key, level().dimension(), blockPosition(), getUUID());
     }
 
     /**

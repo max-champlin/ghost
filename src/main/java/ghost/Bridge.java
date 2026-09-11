@@ -532,7 +532,25 @@ public final class Bridge {
             throw new IllegalArgumentException("no dimension called \"" + want
                     + "\" - loaded: " + known);
         }
-        ServerPlayer p = server.getPlayerList().getPlayers().stream().findFirst().orElse(null);
+        // Default to where the BODY is, because the default POSITION is the
+        // body's too.
+        //
+        // These used to come from different places: anchor() returned the
+        // body's blockPosition while this returned the first online player's
+        // level. With Shelby in the Twilight Forest and the player in the
+        // Overworld, a scan with neither "dim" nor "at" read Overworld blocks
+        // at Twilight Forest coordinates - ninety-seven thousand blocks away,
+        // in the wrong world, reported with the same confidence as everything
+        // else. Position and dimension now come from one entity by
+        // construction, so they cannot disagree.
+        //
+        // It was also findFirst() rather than the requester, which on a server
+        // is whoever happened to log in first.
+        ghost.body.Body b = body(server, a);
+        if (b != null && b.level() instanceof ServerLevel bodyLevel) {
+            return bodyLevel;
+        }
+        ServerPlayer p = requester(server, a);
         return p != null ? p.serverLevel() : server.overworld();
     }
 
@@ -580,9 +598,16 @@ public final class Bridge {
         if (a.has("dim")) {
             return "you asked for it";
         }
-        ServerPlayer p = server.getPlayerList().getPlayers().stream().findFirst().orElse(null);
+        // Must mirror level() exactly. A dimFrom that describes a different
+        // rule than the one actually used is worse than no dimFrom at all.
+        ghost.body.Body b = body(server, a);
+        if (b != null && b.level() instanceof ServerLevel) {
+            return "defaulted to where Shelby is standing ("
+                    + b.level().dimension().location() + ")";
+        }
+        ServerPlayer p = requester(server, a);
         return p != null
-                ? "defaulted to where " + p.getGameProfile().getName() + " is standing"
+                ? "no body - defaulted to where " + p.getGameProfile().getName() + " is standing"
                 : "no players online - defaulted to the overworld";
     }
 

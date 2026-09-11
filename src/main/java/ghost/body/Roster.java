@@ -53,6 +53,23 @@ public final class Roster extends SavedData {
     public record Entry(ResourceKey<Level> dimension, BlockPos pos, UUID entity) {
     }
 
+    /**
+     * The key for a body nobody owns.
+     *
+     * <p>Bodies that predate the ownership rule have no {@code Follow} uuid, so
+     * {@link Body#noteWhereIAm} had nothing to file them under and simply did
+     * not record them. They then ticked forever unregistered, and
+     * {@code /ghost body here} would stand another one up beside one it could
+     * not see - the same shape as the loaded-chunk assumption this class was
+     * written to fix, which is a pattern worth noticing.
+     *
+     * <p>Filed under a fixed nil uuid instead. Deliberately NOT auto-assigned
+     * to whoever is nearest: on a server that would hand a body to whoever
+     * walked past. Ownership is taken by standing next to them and running
+     * {@code body here}, which claims the body it can actually see.
+     */
+    public static final UUID UNOWNED = new UUID(0L, 0L);
+
     private final Map<UUID, Entry> byOwner = new HashMap<>();
 
     public static Roster of(MinecraftServer server) {

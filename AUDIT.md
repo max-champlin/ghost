@@ -113,7 +113,16 @@ assumption, and make the javadoc say "loaded" everywhere it currently says
 
 ## 4. `anchor()` takes position and dimension from different places
 
-**Severity: medium — latent, currently harmless.**
+**FIXED 2026-09-11, and it was not harmless.** `level()` with no `dim` returned
+the *first online player's* level — not even the requester's — while `anchor()`
+returned the *body's* position. With Shelby in the Twilight Forest and the
+player in the Overworld, a `scan` with neither `dim` nor `at` would have read
+Overworld blocks at Twilight Forest coordinates: ninety-seven thousand blocks
+away, in the wrong world, reported with full confidence. Both now come from the
+body by construction, so they cannot disagree, and `dimSource` mirrors the same
+rule so `dimFrom` cannot describe a different one.
+
+**Original severity: medium — believed latent. It was reachable.**
 
 Position comes from the body (`Bodies.find`), dimension from the player
 (`dimSource`). They agree today because both resolve to the same place. When
@@ -199,7 +208,15 @@ tick, with the discard-and-rebuild completed on a later tick rather than inside
 the command. Until then "go there and run it again" is the honest answer and
 the one the message gives.
 
-## Open question
+## 8. Ownerless bodies were invisible to the roster
+
+**FIXED 2026-09-11.** Recorded under `Roster.UNOWNED`, a fixed nil uuid.
+`body here` refuses against an unclaimed record it cannot reach, naming where it
+is, and `body forget` clears it. Ownership is still only ever taken by standing
+next to the body and running `body here` — deliberately not auto-assigned to
+whoever is nearest, which on a server would hand a body to whoever walked past.
+
+**Original text:**
 
 **Ownerless bodies are invisible to the roster.** `Body.noteWhereIAm` only
 records when `followedId() != null`, so a body that predates ownership ticks

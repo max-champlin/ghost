@@ -407,6 +407,9 @@ public final class GhostCommand {
         ghost.body.Roster roster = ghost.body.Roster.of(src.getServer());
         ghost.body.Roster.Entry e = roster.get(p.getUUID());
         if (e == null) {
+            e = roster.get(ghost.body.Roster.UNOWNED);
+        }
+        if (e == null) {
             src.sendSuccess(() -> Component.literal(
                     "Shelby: there is no remembered body to forget."), false);
             return 0;
@@ -414,6 +417,7 @@ public final class GhostCommand {
         final String where = e.dimension().location() + " " + e.pos().getX() + " "
                 + e.pos().getY() + " " + e.pos().getZ();
         roster.clear(p.getUUID());
+        roster.clear(ghost.body.Roster.UNOWNED);
         src.sendSuccess(() -> Component.literal(
                 "Shelby: forgotten the body at " + where
                 + ". If it is still standing there it is now an orphan - "
@@ -496,6 +500,19 @@ public final class GhostCommand {
             ghost.body.Body remembered = roster.resolve(src.getServer(), ownerId);
             if (remembered != null) {
                 chosen = remembered;
+            } else if (roster.get(ownerId) == null
+                    && roster.resolve(src.getServer(), ghost.body.Roster.UNOWNED) == null
+                    && roster.get(ghost.body.Roster.UNOWNED) != null) {
+                // An unowned body is remembered somewhere we cannot reach. Say
+                // so rather than standing a second one up next to it.
+                ghost.body.Roster.Entry u = roster.get(ghost.body.Roster.UNOWNED);
+                src.sendFailure(Component.literal(
+                        "Shelby: there is an unclaimed body in "
+                        + u.dimension().location() + " at " + u.pos().getX() + " "
+                        + u.pos().getY() + " " + u.pos().getZ()
+                        + ". Go there and use /ghost body here to claim it, or "
+                        + "/ghost body forget to give up on it."));
+                return 0;
             } else if (roster.get(ownerId) != null) {
                 // REFUSE. Do not clear the record and build a new body.
                 //
