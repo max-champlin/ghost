@@ -66,5 +66,8 @@ public class Ghost {
         // AE2 plans crafts on a background thread; this is where a finished
         // plan gets submitted and the result said out loud.
         Storage.tickCrafting(event.getServer());
+        // Finishes a body fetch once the entity has actually registered - it
+        // cannot be done inside the command that asked for it.
+        Recall.tick(event.getServer());
     }
 }

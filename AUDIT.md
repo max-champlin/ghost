@@ -213,10 +213,15 @@ failure was asked to explain itself rather than return a bare `null`.
 refusal is the whole of the current behaviour — the relocate path has still
 never succeeded and cannot, as written.
 
-**Remaining work:** a real recall needs a chunk ticket held across at least one
-tick, with the discard-and-rebuild completed on a later tick rather than inside
-the command. Until then "go there and run it again" is the honest answer and
-the one the message gives.
+**FIXED 2026-09-11** by `Recall`. `body here` now holds a `TicketType.FORCED`
+ticket on the source chunk, says it is fetching, and finishes the move from the
+server tick once the entity actually registers. The ticket is released on both
+exit paths - `FORCED` has no timeout, so missing that leaks a permanently loaded
+chunk. Gives up after 200 ticks and **keeps the record**, because failing to
+fetch is not proof the body is gone.
+
+`POST_TELEPORT` was the obvious ticket and is wrong: it is `TicketType<Integer>`
+with a lifespan of a few ticks, shorter than the window being waited on.
 
 ## 8. Ownerless bodies were invisible to the roster
 

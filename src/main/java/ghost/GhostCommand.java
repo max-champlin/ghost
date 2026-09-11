@@ -531,12 +531,29 @@ public final class GhostCommand {
                 ghost.body.Roster.Entry e = roster.get(ownerId);
                 final String dim = e.dimension().location().toString();
                 final net.minecraft.core.BlockPos at = e.pos();
-                src.sendFailure(Component.literal(
-                        "Shelby: you already have a body in " + dim + " at "
-                        + at.getX() + " " + at.getY() + " " + at.getZ()
-                        + ". Go there and use /ghost body here to move them, or "
-                        + "/ghost body forget if they are gone for good."));
-                return 0;
+                if (owner == null) {
+                    src.sendFailure(Component.literal(
+                            "Shelby: there is a body in " + dim + " at " + at.getX() + " "
+                            + at.getY() + " " + at.getZ() + " that I cannot reach from here."));
+                    return 0;
+                }
+                if (ghost.Recall.pending(ownerId)) {
+                    src.sendFailure(Component.literal(
+                            "Shelby: already on my way from " + dim + " - give me a moment."));
+                    return 0;
+                }
+                // FETCH them rather than refuse.
+                //
+                // The refusal was correct and still is the fallback: the entity
+                // cannot be resolved inside this command, because entity
+                // registration is deferred a tick or more after the chunk
+                // loads. Recall holds a ticket on that chunk and finishes the
+                // move when they actually appear.
+                ghost.Recall.request(owner, e, level, src.getPosition(), src.getRotation().y);
+                src.sendSuccess(() -> Component.literal(
+                        "Shelby: fetching them from " + dim + " at " + at.getX() + " "
+                        + at.getY() + " " + at.getZ() + "..."), false);
+                return 1;
             }
         }
         // "away" deliberately has no such fallback. Dismissing a body standing
@@ -671,7 +688,7 @@ public final class GhostCommand {
         return sb.toString();
     }
 
-    private static int carryOver(net.minecraft.nbt.CompoundTag kit, ghost.body.Body fresh) {
+    static int carryOver(net.minecraft.nbt.CompoundTag kit, ghost.body.Body fresh) {
         if (kit == null) {
             return 0;
         }
