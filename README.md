@@ -10,7 +10,9 @@
 > on a copy of your world first. Build it, point an agent at it, read
 > [`docs/actions.v2.schema.json`](docs/actions.v2.schema.json), and expect
 > sharp edges. See [Status](#status) for exactly what has been verified by
-> observation and what has not.
+> observation and what has not, and [AUDIT.md](AUDIT.md) for the known debt —
+> written down deliberately, because a WIP project that cannot name its own
+> weak points is asking you to take them on trust.
 
 ---
 
