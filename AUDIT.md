@@ -174,17 +174,40 @@ Not bugs. Things that have never run, listed so nobody assumes otherwise:
 
 ---
 
-## Open question
+## Answered question
 
 **Does `level.getChunk(x, z)` make an unloaded entity resolvable in the same
-tick?** Evidence says no: since 1.17 entities live in separate storage
-(`entities/` vs `region/`) and are registered by the entity section manager on a
-deferred schedule, and `resolve()` returned null every time for exactly that
-case. That is a hypothesis supported by behaviour, **not a verified mechanism**.
+tick? No.** Confirmed from a live world 2026-09-11, the first time the
+diagnostic logging fired:
 
-`Roster.resolve()` now logs which branch fires, so the next occurrence answers
-this from the log instead of from theory. If the answer is "no", the relocate
-path needs a chunk ticket and a follow-up tick rather than a synchronous lookup.
+```
+Roster: chunk [6073, 718] in twilightforest:twilight_forest was loaded, but
+entity c0220f7e-3b7c-41f5-b116-72d95c510674 is still not registered. Entities
+load on a deferred schedule since 1.17 ...
+```
+
+The block chunk loaded; the entity was not in the level's UUID index in the same
+tick. This had been a hypothesis for a day, and became a fact the first time the
+failure was asked to explain itself rather than return a bare `null`.
+
+**Consequence:** `body here` correctly refuses instead of cloning, and that
+refusal is the whole of the current behaviour — the relocate path has still
+never succeeded and cannot, as written.
+
+**Remaining work:** a real recall needs a chunk ticket held across at least one
+tick, with the discard-and-rebuild completed on a later tick rather than inside
+the command. Until then "go there and run it again" is the honest answer and
+the one the message gives.
+
+## Open question
+
+**Ownerless bodies are invisible to the roster.** `Body.noteWhereIAm` only
+records when `followedId() != null`, so a body that predates ownership ticks
+forever without being registered, and `body here` will create another beside it.
+The roster protects against duplicates only for bodies it already knows about -
+the same shape as the loaded-chunks assumption it was built to fix. Whether the
+answer is adoption-on-tick or a null-keyed record is a behaviour decision, not a
+bug fix.
 
 ---
 
