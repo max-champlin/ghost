@@ -87,25 +87,68 @@ public final class Roster extends SavedData {
      * Load the body a record points at, pulling its chunk in if it is not there.
      *
      * <p>One chunk, on a command, is a fair price for not silently cloning
-     * someone. Returns null if the record is stale - the world moved on, the
-     * entity was removed by something else, or the dimension no longer exists -
-     * and the caller is expected to drop the record when that happens.
+     * someone.
+     *
+     * <p><b>Null means "could not verify", NOT "there is nothing there".</b>
+     * The caller must refuse and keep the record. Reading null as staleness is
+     * precisely the bug this method's logging exists to prevent: the record was
+     * cleared, a second body was stood up, and the evidence went with it.
+     * {@code /ghost body forget} is how a record is dropped - deliberately, by
+     * a person, never by an inference.
+     *
+     * <p>Every failure path logs what it looked for and what it found, so the
+     * next person to ask "why did it not find the body?" reads one line instead
+     * of an hour of guesswork.
      */
     public Body resolve(MinecraftServer server, UUID owner) {
         Entry e = get(owner);
         if (e == null) {
             return null;
         }
+        // SAY WHAT HAPPENED.
+        //
+        // The first version of this returned a bare null on every failure, and
+        // the caller read that null as "the record is stale", cleared it, and
+        // built a duplicate body. Diagnosing that afterwards meant reading a
+        // .dat file and guessing at entity-loading internals, because nothing
+        // anywhere had recorded which step failed.
+        //
+        // A failure that cannot explain itself costs an hour every time it
+        // happens. Each branch below names what it looked for and what it got.
         ServerLevel level = server.getLevel(e.dimension());
         if (level == null) {
+            ghost.Ghost.LOG.warn("Roster: cannot resolve body for {} - dimension {} "
+                    + "is not loaded on this server. Record kept.",
+                    owner, e.dimension().location());
             return null;
         }
-        // Touching the chunk is what makes the entity resolvable at all; without
-        // it getEntity returns null for exactly the bodies this class exists for.
-        level.getChunk(net.minecraft.core.SectionPos.blockToSectionCoord(e.pos().getX()),
-                net.minecraft.core.SectionPos.blockToSectionCoord(e.pos().getZ()));
+        int cx = net.minecraft.core.SectionPos.blockToSectionCoord(e.pos().getX());
+        int cz = net.minecraft.core.SectionPos.blockToSectionCoord(e.pos().getZ());
+        level.getChunk(cx, cz);
         net.minecraft.world.entity.Entity found = level.getEntity(e.entity());
-        return found instanceof Body body && body.isAlive() ? body : null;
+        if (found == null) {
+            ghost.Ghost.LOG.warn("Roster: chunk [{}, {}] in {} was loaded, but entity {} "
+                    + "is still not registered. Entities load on a deferred schedule since "
+                    + "1.17, so this is expected within the same tick - the caller must "
+                    + "REFUSE, not assume the record is stale. Record kept.",
+                    cx, cz, e.dimension().location(), e.entity());
+            return null;
+        }
+        if (!(found instanceof Body body)) {
+            ghost.Ghost.LOG.warn("Roster: entity {} in {} resolved to {} and not a body. "
+                    + "Record kept - something else now owns that id.",
+                    e.entity(), e.dimension().location(), found.getType());
+            return null;
+        }
+        if (!body.isAlive()) {
+            ghost.Ghost.LOG.warn("Roster: body {} in {} resolved but is not alive. "
+                    + "Record kept; /ghost body forget will drop it.",
+                    e.entity(), e.dimension().location());
+            return null;
+        }
+        ghost.Ghost.LOG.info("Roster: resolved body for {} in {} at {}",
+                owner, e.dimension().location(), e.pos());
+        return body;
     }
 
     @Override
